@@ -1,0 +1,1754 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pokémon TCG — Central de Cartas & Batalha vs IA</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1a1e33">
+<style>
+  :root{
+    --bg:#0f1220; --panel:#1a1e33; --panel2:#232847; --border:#32395f;
+    --txt:#e8eaf6; --muted:#9aa3c7; --accent:#ffcb05; --accent2:#3d7dca;
+    --green:#4caf50; --red:#ef5350; --orange:#ffa726;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{background:var(--bg); color:var(--txt); font-family:'Segoe UI',system-ui,sans-serif; min-height:100vh;}
+  header{background:linear-gradient(135deg,#1a1e33,#2b3160); padding:14px 20px; display:flex; align-items:center; gap:14px; border-bottom:3px solid var(--accent);}
+  header h1{font-size:1.25rem; color:var(--accent); letter-spacing:.5px;}
+  header .sub{font-size:.75rem; color:var(--muted);}
+  nav{display:flex; gap:6px; padding:10px 16px; background:var(--panel); flex-wrap:wrap; position:sticky; top:0; z-index:50; border-bottom:1px solid var(--border);}
+  nav button{background:var(--panel2); color:var(--txt); border:1px solid var(--border); padding:9px 16px; border-radius:10px; cursor:pointer; font-size:.9rem; font-weight:600; transition:.15s;}
+  nav button:hover{border-color:var(--accent);}
+  nav button.active{background:var(--accent); color:#222; border-color:var(--accent);}
+  main{padding:18px; max-width:1200px; margin:0 auto;}
+  section.tab{display:none;}
+  section.tab.active{display:block;}
+  h2{font-size:1.05rem; margin-bottom:12px; color:var(--accent);}
+  h3{font-size:.95rem; margin:12px 0 8px; color:var(--accent2);}
+  .card-panel{background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:16px; margin-bottom:16px;}
+  input,select,textarea{background:var(--panel2); border:1px solid var(--border); color:var(--txt); padding:9px 12px; border-radius:8px; font-size:.9rem; outline:none;}
+  input:focus,select:focus{border-color:var(--accent2);}
+  .row{display:flex; gap:10px; flex-wrap:wrap; align-items:center;}
+  .btn{background:var(--accent2); color:#fff; border:none; padding:10px 18px; border-radius:9px; cursor:pointer; font-weight:700; font-size:.9rem; transition:.15s;}
+  .btn:hover{filter:brightness(1.15);}
+  .btn.gold{background:var(--accent); color:#222;}
+  .btn.green{background:var(--green);}
+  .btn.red{background:var(--red);}
+  .btn.ghost{background:transparent; border:1px solid var(--border); color:var(--muted);}
+  .btn.sm{padding:6px 10px; font-size:.78rem;}
+  .grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:12px; margin-top:14px;}
+  .cardbox{background:var(--panel2); border:1px solid var(--border); border-radius:10px; padding:8px; text-align:center; cursor:pointer; transition:.15s; position:relative;}
+  .cardbox:hover{border-color:var(--accent); transform:translateY(-2px);}
+  .cardbox img{width:100%; border-radius:6px;}
+  .cardbox .nm{font-size:.78rem; margin-top:6px; font-weight:600;}
+  .cardbox .st{font-size:.68rem; color:var(--muted);}
+  .cardbox .qty-badge{position:absolute; top:6px; right:6px; background:var(--accent); color:#222; border-radius:50%; min-width:24px; height:24px; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:.75rem; padding:0 4px;}
+  .noimg{width:100%; aspect-ratio:63/88; background:linear-gradient(160deg,#2b3160,#1a1e33); border-radius:6px; display:flex; flex-direction:column; align-items:center; justify-content:center; font-size:.75rem; padding:6px; gap:4px;}
+  .noimg .big{font-size:1.6rem;}
+  .muted{color:var(--muted); font-size:.8rem;}
+  .pill{display:inline-block; background:var(--panel2); border:1px solid var(--border); border-radius:20px; padding:3px 10px; font-size:.72rem; margin:2px;}
+  /* modal */
+  .modal-bg{position:fixed; inset:0; background:rgba(0,0,0,.75); display:none; align-items:center; justify-content:center; z-index:200; padding:16px;}
+  .modal-bg.open{display:flex;}
+  .modal{background:var(--panel); border:1px solid var(--border); border-radius:16px; max-width:760px; width:100%; max-height:92vh; overflow-y:auto; padding:20px; position:relative;}
+  .modal .close{position:absolute; top:10px; right:14px; background:none; border:none; color:var(--muted); font-size:1.4rem; cursor:pointer;}
+  .modal-flex{display:flex; gap:18px; flex-wrap:wrap;}
+  .modal-flex img{width:240px; border-radius:10px; align-self:flex-start;}
+  .modal-info{flex:1; min-width:240px;}
+  table{width:100%; border-collapse:collapse; font-size:.82rem; margin-top:8px;}
+  th,td{padding:6px 8px; border-bottom:1px solid var(--border); text-align:left;}
+  th{color:var(--muted); font-weight:600;}
+  .price-brl{color:var(--green); font-weight:700;}
+  /* deck editor */
+  .deck-list-item{display:flex; justify-content:space-between; align-items:center; background:var(--panel2); border:1px solid var(--border); border-radius:9px; padding:8px 12px; margin-bottom:6px; font-size:.85rem;}
+  .deck-count{font-weight:800; font-size:1rem;}
+  .deck-count.ok{color:var(--green);} .deck-count.bad{color:var(--orange);}
+  /* battle */
+  .battle-zone{background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:14px; margin-bottom:14px;}
+  .ai-stats{display:flex; gap:10px; flex-wrap:wrap; margin-bottom:10px;}
+  .ai-stat{background:var(--panel2); border:1px solid var(--border); border-radius:9px; padding:6px 12px; font-size:.8rem;}
+  .ai-stat b{color:var(--accent);}
+  .board{display:flex; gap:12px; flex-wrap:wrap;}
+  .pkm-slot{background:var(--panel2); border:1px solid var(--border); border-radius:10px; padding:8px; width:130px; text-align:center; font-size:.72rem; position:relative;}
+  .pkm-slot.active-slot{border-color:var(--accent); box-shadow:0 0 12px rgba(255,203,5,.25);}
+  .pkm-slot img{width:100%; border-radius:5px;}
+  .hpbar{height:7px; background:#333; border-radius:4px; margin-top:5px; overflow:hidden;}
+  .hpbar div{height:100%; background:var(--green); transition:.3s;}
+  .hpbar div.low{background:var(--red);}
+  .hpbar div.mid{background:var(--orange);}
+  .energy-dots{margin-top:4px; font-size:.85rem; line-height:1.2;}
+  #battle-log{background:#10132244; border:1px solid var(--border); border-radius:10px; padding:12px; max-height:340px; overflow-y:auto; font-size:.86rem; line-height:1.55;}
+  #battle-log .turn-block{border-left:3px solid var(--accent2); padding-left:10px; margin-bottom:12px;}
+  #battle-log .turn-block.latest{border-left-color:var(--accent); background:#ffcb0509; border-radius:0 8px 8px 0; padding:8px 10px;}
+  #battle-log .tt{color:var(--accent2); font-weight:700; font-size:.78rem;}
+  #battle-log .latest .tt{color:var(--accent);}
+  #battle-log .instr{margin:3px 0;}
+  #battle-log .win{color:var(--accent); font-size:1.05rem; font-weight:800;}
+  .attack-row{background:var(--panel2); border:1px solid var(--border); border-radius:8px; padding:8px 10px; margin:5px 0; font-size:.82rem;}
+  .help-box{background:#3d7dca18; border:1px solid var(--accent2); border-radius:10px; padding:12px 14px; font-size:.83rem; line-height:1.6; margin-bottom:14px;}
+  .warn-box{background:#ffa72615; border:1px solid var(--orange); border-radius:10px; padding:10px 14px; font-size:.8rem; margin-bottom:12px;}
+  #toast{position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--accent); color:#222; padding:10px 22px; border-radius:24px; font-weight:700; display:none; z-index:300; box-shadow:0 4px 18px rgba(0,0,0,.5);}
+  .spin{display:inline-block; width:16px; height:16px; border:3px solid var(--muted); border-top-color:var(--accent); border-radius:50%; animation:sp 0.8s linear infinite; vertical-align:middle;}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  @media(max-width:640px){ .modal-flex img{width:100%; max-width:280px; margin:0 auto;} main{padding:10px;} }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="font-size:1.8rem">⚡</div>
+  <div>
+    <h1>Pokémon TCG — Central de Cartas</h1>
+    <div class="sub">Identificação • Cotação • Coleção • Decks • Batalha contra a IA</div>
+  </div>
+</header>
+
+<nav>
+  <button data-tab="buscar" class="active">🔍 Buscar Carta</button>
+  <button data-tab="colecao">📚 Minha Coleção</button>
+  <button data-tab="decks">🃏 Meus Decks</button>
+  <button data-tab="loja">🏪 Minha Loja</button>
+  <button data-tab="batalha">⚔️ Batalha vs IA</button>
+  <button data-tab="ajuda">❓ Ajuda</button>
+</nav>
+
+<main>
+
+<!-- ============ BUSCAR ============ -->
+<section class="tab active" id="tab-buscar">
+  <div class="card-panel">
+    <h2>🔍 Identificar / Buscar carta</h2>
+    <p class="muted" style="margin-bottom:10px">Digite o nome do Pokémon (em inglês, ex.: <i>Charizard</i>) e/ou o número da carta (o número embaixo, ex.: <i>25</i> de 25/102). Nomes de Pokémon são iguais em qualquer idioma da carta.</p>
+    <div class="row">
+      <input id="s-name" placeholder="Nome (ex.: Pikachu)" style="flex:2; min-width:160px">
+      <input id="s-number" placeholder="Nº da carta (ex.: 25)" style="flex:1; min-width:100px">
+      <input id="s-set" placeholder="Coleção (ex.: Obsidian)" style="flex:1; min-width:120px">
+      <button class="btn gold" onclick="doSearch()">Buscar</button>
+      <button class="btn" onclick="openCamModal()">📷 Identificar por foto</button>
+    </div>
+    <div id="s-status" class="muted" style="margin-top:10px"></div>
+    <div class="grid" id="s-results"></div>
+  </div>
+  <div class="card-panel">
+    <h3>✍️ Carta manual (pra cartas em português ou sem internet)</h3>
+    <p class="muted" style="margin-bottom:8px">Cadastre a carta na mão pra usar na coleção, nos decks e na batalha.</p>
+    <button class="btn" onclick="openManualForm()">+ Criar carta manual</button>
+  </div>
+</section>
+
+<!-- ============ COLEÇÃO ============ -->
+<section class="tab" id="tab-colecao">
+  <div class="card-panel">
+    <h2>📚 Minha Coleção</h2>
+    <div class="row">
+      <input id="c-filter" placeholder="Filtrar por nome..." oninput="renderCollection()" style="flex:1; min-width:160px">
+      <div class="ai-stat">Cartas: <b id="c-total">0</b></div>
+      <div class="ai-stat">Valor estimado: <b id="c-value">—</b></div>
+    </div>
+    <div class="grid" id="c-grid"></div>
+  </div>
+</section>
+
+<!-- ============ DECKS ============ -->
+<section class="tab" id="tab-decks">
+  <div class="card-panel">
+    <h2>📦 Pré-Decks Oficiais (Theme Decks)</h2>
+    <p class="muted" style="margin-bottom:10px">Importe um deck oficial pronto da Pokémon (Base Set até a era Sword & Shield). Depois de importar, ele vira SEU deck: edite à vontade, coloque e tire cartas.</p>
+    <div class="row">
+      <button class="btn" id="pd-load-btn" onclick="loadPredeckIndex()">📥 Carregar lista de pré-decks</button>
+      <select id="pd-set" onchange="pdSetChanged()" style="display:none; max-width:230px"></select>
+      <select id="pd-deck" style="display:none; max-width:230px"></select>
+      <button class="btn gold" id="pd-import-btn" onclick="importPredeck()" style="display:none">⬇️ Importar</button>
+    </div>
+    <div id="pd-status" class="muted" style="margin-top:8px"></div>
+  </div>
+
+  <div class="card-panel">
+    <h2>🃏 Meus Decks</h2>
+    <div class="row">
+      <input id="d-newname" placeholder="Nome do novo deck (ex.: Deck Fogo do Paulo)" style="flex:1; min-width:200px">
+      <button class="btn gold" onclick="createDeck()">+ Criar deck</button>
+    </div>
+    <div id="d-list" style="margin-top:14px"></div>
+  </div>
+
+  <div class="card-panel" id="d-editor" style="display:none">
+    <h2 id="d-editor-title"></h2>
+    <div class="row" style="margin-bottom:10px">
+      <div class="ai-stat">Total: <span class="deck-count" id="d-count">0</span>/60</div>
+      <div class="ai-stat">Pokémon: <b id="d-npkm">0</b></div>
+      <div class="ai-stat">Treinadores: <b id="d-ntrn">0</b></div>
+      <div class="ai-stat">Energias: <b id="d-nerg">0</b></div>
+      <button class="btn ghost sm" onclick="closeDeckEditor()">Fechar editor</button>
+    </div>
+    <h3>⚡ Adicionar energia básica rápida</h3>
+    <div class="row" id="d-energy-btns"></div>
+    <h3>🔍 Adicionar carta (busca online)</h3>
+    <div class="row">
+      <input id="d-search" placeholder="Nome da carta..." style="flex:1; min-width:160px">
+      <button class="btn sm" onclick="deckSearch()">Buscar</button>
+      <button class="btn sm ghost" onclick="openManualForm(true)">+ Carta manual</button>
+    </div>
+    <div class="grid" id="d-search-results"></div>
+    <h3>📋 Cartas do deck</h3>
+    <div id="d-cards"></div>
+  </div>
+</section>
+
+<!-- ============ MINHA LOJA ============ -->
+<section class="tab" id="tab-loja">
+  <div class="card-panel">
+    <h2>🏪 Minha Loja</h2>
+    <div class="row" style="margin-bottom:10px">
+      <input id="l-name" placeholder="Nome da loja (ex.: Cartas do Paulo)" style="flex:1; min-width:180px" onchange="lojaConfigChanged()">
+      <input id="l-whats" placeholder="WhatsApp com DDD (ex.: 14999998888)" style="min-width:200px" onchange="lojaConfigChanged()">
+    </div>
+    <div id="l-items"></div>
+    <div class="row" style="margin-top:12px">
+      <div class="ai-stat">Itens à venda: <b id="l-count">0</b></div>
+      <div class="ai-stat">Total pedido: <b id="l-total">—</b></div>
+      <button class="btn gold" onclick="downloadLoja()">⬇️ Gerar página da loja (loja.html)</button>
+    </div>
+    <p class="muted" style="margin-top:8px">O arquivo <b>loja.html</b> é uma página pronta com fotos, preços e botão de WhatsApp em cada carta. Publique no seu GitHub Pages (igual o álbum da Copa) ou mande o arquivo direto pros interessados.</p>
+  </div>
+
+  <div class="card-panel">
+    <h2>🌐 Loja Online AO VIVO (com login e reserva)</h2>
+    <div class="help-box">Versão viva da loja: os dados ficam no <b>Supabase</b> (grátis) e a página no seu GitHub Pages. Cada pessoa entra com <b>usuário e senha próprios</b> (você cria no painel do Supabase), vê os preços sempre atualizados e pode <b>reservar</b> cartas. Siga o passo a passo do arquivo <b>SETUP_LOJA_ONLINE.md</b> (na mesma pasta deste app) — só precisa fazer 1 vez.</div>
+    <div class="row" style="margin-bottom:8px">
+      <input id="cl-url" placeholder="Supabase URL (https://xxxx.supabase.co)" style="flex:1; min-width:240px">
+      <input id="cl-key" placeholder="Supabase anon key (public)" style="flex:1; min-width:240px">
+    </div>
+    <div class="row" style="margin-bottom:8px">
+      <input id="cl-email" placeholder="Meu e-mail (admin)" style="min-width:200px">
+      <input id="cl-pass" type="password" placeholder="Minha senha do Supabase" style="min-width:170px">
+    </div>
+    <div class="row">
+      <button class="btn green" onclick="publishLoja()">🚀 Publicar / Atualizar loja online</button>
+      <button class="btn sm" onclick="verReservas()">📋 Ver reservas</button>
+      <button class="btn gold sm" onclick="downloadLojaOnline()">⬇️ Gerar loja.html (online c/ login)</button>
+    </div>
+    <div id="cl-status" class="muted" style="margin-top:10px"></div>
+  </div>
+  <div class="card-panel">
+    <h3>➕ Colocar carta da coleção à venda (clique na carta)</h3>
+    <div class="grid" id="l-pick"></div>
+  </div>
+</section>
+
+<!-- ============ BATALHA ============ -->
+<section class="tab" id="tab-batalha">
+  <div class="card-panel" id="b-setup">
+    <h2>⚔️ Batalha contra a IA</h2>
+    <div class="help-box">
+      Você joga com seu deck físico na mesa. A IA joga com <b>outro deck físico seu</b> — mas quem pensa é ela!
+      O app embaralha o deck da IA virtualmente e te dá instruções: <i>"coloque Charmander no banco"</i>, <i>"anexe Energia Fogo"</i>, <i>"ataque com Ember: 30 de dano"</i>.
+      Você só espelha na mesa (pegue as cartas do deck da IA no portadeck, sem ordem — o app controla tudo).
+    </div>
+    <div class="row" style="margin-bottom:10px">
+      <label>Deck da IA:&nbsp;<select id="b-aideck"></select></label>
+      <label>Quem começa:&nbsp;
+        <select id="b-first">
+          <option value="coin">🪙 Sortear na moeda</option>
+          <option value="ai">IA começa</option>
+          <option value="player">Eu começo</option>
+        </select>
+      </label>
+      <button class="btn gold" onclick="startBattle()">▶ Iniciar batalha</button>
+    </div>
+    <p class="muted">O deck da IA precisa ter 60 cartas e pelo menos 1 Pokémon Básico. Cadastre os decks na aba 🃏 Meus Decks.</p>
+  </div>
+
+  <div id="b-arena" style="display:none">
+    <div class="battle-zone">
+      <h3 style="margin-top:0">🤖 Lado da IA</h3>
+      <div class="ai-stats">
+        <div class="ai-stat">🃏 Deck: <b id="b-ai-deck">0</b></div>
+        <div class="ai-stat">✋ Mão: <b id="b-ai-hand">0</b></div>
+        <div class="ai-stat">🏆 Prêmios da IA: <b id="b-ai-prizes">6</b></div>
+        <div class="ai-stat">🗑️ Descarte: <b id="b-ai-discard">0</b></div>
+        <div class="ai-stat">🏆 Meus prêmios pegos: <b id="b-my-prizes">0</b>/6</div>
+        <div class="ai-stat">Turno: <b id="b-turncount">0</b></div>
+      </div>
+      <div class="board" id="b-ai-board"></div>
+    </div>
+
+    <div class="battle-zone">
+      <h3 style="margin-top:0">📜 Instruções da partida</h3>
+      <div id="battle-log"></div>
+      <div class="row" style="margin-top:12px">
+        <button class="btn gold" id="b-aiturn-btn" onclick="aiExecuteTurn()">🤖 Executar turno da IA</button>
+        <button class="btn red sm" onclick="confirmEndBattle()">Encerrar batalha</button>
+      </div>
+    </div>
+
+    <div class="battle-zone" id="b-player-panel">
+      <h3 style="margin-top:0">🧑 Meu turno (informe o que aconteceu)</h3>
+      <div class="row" style="margin-bottom:8px">
+        <label class="muted">Meu Pokémon Ativo:</label>
+        <input id="b-my-active" placeholder="Nome (ex.: Pikachu)" style="width:150px">
+        <select id="b-my-type"></select>
+        <label class="muted" title="A IA usa isso pra calcular fraqueza no ataque dela">Minha fraqueza:</label>
+        <select id="b-my-weak"></select>
+      </div>
+      <div class="row">
+        <label class="muted">Meu ataque causou:</label>
+        <input id="b-my-dmg" type="number" placeholder="dano" style="width:90px">
+        <label class="muted" style="font-size:.75rem"><input type="checkbox" id="b-dmg-final"> dano já é final (não aplicar fraqueza/resist. da IA)</label>
+        <button class="btn green" onclick="playerAttack()">💥 Aplicar dano na IA</button>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button class="btn red sm" onclick="playerKO()">☠️ Meu Ativo foi nocauteado</button>
+        <button class="btn ghost sm" onclick="aiHeal()">💧 Curar ativo da IA (informar valor)</button>
+        <button class="btn ghost sm" onclick="aiForceSwitch()">🔁 Forçar troca do ativo da IA (efeito meu)</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ AJUDA ============ -->
+<section class="tab" id="tab-ajuda">
+  <div class="card-panel">
+    <h2>❓ Como usar</h2>
+    <div class="help-box">
+      <b>🔍 Buscar Carta</b> — identifica qualquer carta pelo nome/número usando a base oficial do Pokémon TCG (precisa de internet). Mostra imagem, coleção, raridade e <b>cotação</b> (TCGPlayer em US$, Cardmarket em €, convertidos pra R$ com câmbio do dia). Dali você adiciona à coleção ou a um deck.<br><br>
+      <b>📚 Coleção</b> — seu catálogo. Clique numa carta pra ver detalhes/preço, mudar quantidade ou remover. O valor estimado total aparece no topo.<br><br>
+      <b>🃏 Decks</b> — monte decks de 60 cartas (máx. 4 cópias por carta, energia básica ilimitada). Use a busca, a carta manual ou os botões de energia rápida.<br><br>
+      <b>⚔️ Batalha vs IA</b> — escolha o deck que a IA vai usar. O app embaralha virtualmente e joga por ela: compra, coloca básicos, evolui, anexa energia, usa treinadores comuns, recua e ataca. Você espelha as jogadas dela na mesa com as cartas físicas (ou só acompanha o tabuleiro na tela) e joga seu turno normalmente com seu deck físico. Depois do seu turno, informe o dano que causou e clique em <b>Executar turno da IA</b>.
+    </div>
+    <div class="warn-box">
+      ⚠️ <b>Limitações honestas:</b> a IA aplica as regras principais (energia, evolução, fraqueza ×2, resistência −30, recuo, prêmios, nocaute, deck-out) e conhece treinadores comuns (Pesquisa de Professores, Poção, Troca, Bola Ninho/Rápida, Ordens do Chefe...). Efeitos de ataque complexos ela mostra o texto e pede pra você aplicar fisicamente. Condições especiais (dormir, paralisar etc.) ficam por sua conta na mesa. A identificação por 📷 foto lê o nome/número da carta por OCR — funciona melhor com boa luz, carta reta e sem reflexo; se errar uma letra, corrija na busca por nome.<br><br>
+      🌐 <b>Fontes de dados:</b> busca de cartas tenta a API oficial do Pokémon TCG e cai automaticamente pra TCGdex se ela estiver fora do ar (as duas têm imagens e preços). Pré-decks oficiais vêm do repositório público pokemon-tcg-data.
+    </div>
+    <p class="muted">Dados salvos no navegador (localStorage) deste aparelho. A batalha em andamento também fica salva se você fechar a página.</p>
+  </div>
+  <div class="card-panel">
+    <h2>💾 Backup / Restaurar (levar seus dados pra outro aparelho)</h2>
+    <p class="muted" style="margin-bottom:10px">Coleção, decks, preços e loja ficam salvos <b>neste navegador</b>. Pra usar no celular (ou depois de trocar de PC): gere o backup aqui, mande o arquivo pra você mesmo (WhatsApp/Drive) e restaure no outro aparelho.</p>
+    <div class="row">
+      <button class="btn gold" onclick="backupTudo()">⬇️ Baixar backup (.json)</button>
+      <label class="btn"><input type="file" accept=".json,application/json" style="display:none" onchange="restaurarTudo(event)">📂 Restaurar backup</label>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<!-- MODAL carta -->
+<div class="modal-bg" id="modal-card">
+  <div class="modal">
+    <button class="close" onclick="closeModal('modal-card')">✕</button>
+    <div id="modal-card-content"></div>
+  </div>
+</div>
+
+<!-- MODAL carta manual -->
+<div class="modal-bg" id="modal-manual">
+  <div class="modal">
+    <button class="close" onclick="closeModal('modal-manual')">✕</button>
+    <h2>✍️ Carta manual</h2>
+    <div class="row" style="margin-bottom:8px">
+      <select id="m-super" onchange="manualSuperChange()">
+        <option value="Pokémon">Pokémon</option>
+        <option value="Trainer">Treinador</option>
+        <option value="Energy">Energia</option>
+      </select>
+      <input id="m-name" placeholder="Nome da carta" style="flex:1; min-width:160px">
+    </div>
+    <div id="m-pkm-fields">
+      <div class="row" style="margin-bottom:8px">
+        <input id="m-hp" type="number" placeholder="HP" style="width:80px">
+        <select id="m-type"></select>
+        <select id="m-stage">
+          <option value="Basic">Básico</option>
+          <option value="Stage 1">Estágio 1</option>
+          <option value="Stage 2">Estágio 2</option>
+        </select>
+        <input id="m-evolvesfrom" placeholder="Evolui de (nome)" style="width:150px">
+      </div>
+      <div class="row" style="margin-bottom:8px">
+        <label class="muted">Fraqueza:</label><select id="m-weak"></select>
+        <label class="muted">Resistência:</label><select id="m-resist"></select>
+        <label class="muted">Recuo:</label><input id="m-retreat" type="number" value="1" style="width:60px">
+      </div>
+      <h3>Ataque 1</h3>
+      <div class="row" style="margin-bottom:6px">
+        <input id="m-a1-name" placeholder="Nome" style="width:140px">
+        <input id="m-a1-cost" placeholder="Custo (ex.: FFC)" style="width:110px" title="F=Fogo A=Água P=Planta E=Elétrico S=Psíquico L=Lutador N=Escuridão M=Metal D=Dragão I=Fada C=Incolor">
+        <input id="m-a1-dmg" type="number" placeholder="Dano" style="width:80px">
+        <input id="m-a1-txt" placeholder="Efeito (opcional)" style="flex:1; min-width:140px">
+      </div>
+      <h3>Ataque 2 (opcional)</h3>
+      <div class="row" style="margin-bottom:6px">
+        <input id="m-a2-name" placeholder="Nome" style="width:140px">
+        <input id="m-a2-cost" placeholder="Custo" style="width:110px">
+        <input id="m-a2-dmg" type="number" placeholder="Dano" style="width:80px">
+        <input id="m-a2-txt" placeholder="Efeito (opcional)" style="flex:1; min-width:140px">
+      </div>
+      <p class="muted">Custo: F=Fogo, A=Água, P=Planta, E=Elétrico, S=Psíquico, L=Lutador, N=Escuridão, M=Metal, D=Dragão, I=Fada, C=Incolor</p>
+    </div>
+    <div id="m-energy-fields" style="display:none">
+      <div class="row"><label class="muted">Tipo da energia:</label><select id="m-energytype"></select></div>
+    </div>
+    <div id="m-trainer-fields" style="display:none">
+      <div class="row"><textarea id="m-trainertext" placeholder="Texto/efeito da carta (a IA reconhece: Poção, Troca/Switch, Pesquisa de Professores, Bola Ninho/Nest Ball, Bola Rápida/Quick Ball, Ordens do Chefe/Boss's Orders, Hop...)" style="flex:1; min-height:70px"></textarea></div>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button class="btn gold" onclick="saveManualCard()">Salvar carta</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL câmera -->
+<div class="modal-bg" id="modal-cam">
+  <div class="modal">
+    <button class="close" onclick="closeCamModal()">✕</button>
+    <h2>📷 Identificar carta pela câmera</h2>
+    <p class="muted" style="margin-bottom:10px">Enquadre a carta de frente, com <b>boa luz</b>, preenchendo a imagem. Eu leio o nome e o número (OCR) e busco na base de cartas.</p>
+    <video id="cam-video" autoplay playsinline style="display:none; width:100%; max-height:320px; border-radius:10px; background:#000"></video>
+    <div class="row" style="margin-top:10px">
+      <button class="btn gold" id="cam-shot-btn" style="display:none" onclick="camShot()">📸 Capturar</button>
+      <label class="btn"><input type="file" accept="image/*" capture="environment" style="display:none" onchange="camFileChosen(event)">📁 Tirar / enviar foto</label>
+    </div>
+    <div id="cam-status" class="muted" style="margin-top:10px"></div>
+    <div class="grid" id="cam-results"></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+/* =====================================================================
+   Pokémon TCG — Central de Cartas & Batalha vs IA  (v1.0)
+   Arquivo único. Dados: localStorage. API: api.pokemontcg.io (v2)
+   Câmbio: economia.awesomeapi.com.br
+===================================================================== */
+
+// ---------- Tipos ----------
+const TYPES = {
+  Grass:{pt:'Planta',icon:'🌿'}, Fire:{pt:'Fogo',icon:'🔥'}, Water:{pt:'Água',icon:'💧'},
+  Lightning:{pt:'Elétrico',icon:'⚡'}, Psychic:{pt:'Psíquico',icon:'🔮'}, Fighting:{pt:'Lutador',icon:'🥊'},
+  Darkness:{pt:'Escuridão',icon:'🌑'}, Metal:{pt:'Metal',icon:'⚙️'}, Fairy:{pt:'Fada',icon:'✨'},
+  Dragon:{pt:'Dragão',icon:'🐉'}, Colorless:{pt:'Incolor',icon:'⭐'}
+};
+const COST_LETTER = {F:'Fire',A:'Water',P:'Grass',E:'Lightning',S:'Psychic',L:'Fighting',N:'Darkness',M:'Metal',D:'Dragon',I:'Fairy',C:'Colorless'};
+const tIcon = t => TYPES[t] ? TYPES[t].icon : '⭐';
+const tPt   = t => TYPES[t] ? TYPES[t].pt : t;
+
+// ---------- Storage ----------
+const LS = { col:'ptcg_collection', decks:'ptcg_decks', battle:'ptcg_battle', rates:'ptcg_rates', quotes:'ptcg_quotes' };
+const load = (k,d) => { try{ return JSON.parse(localStorage.getItem(k)) ?? d }catch(e){ return d } };
+const save = (k,v) => localStorage.setItem(k, JSON.stringify(v));
+let collection = load(LS.col, {});     // id -> {card, qty}
+let decks      = load(LS.decks, []);   // [{id,name,cards:[{card,qty}]}]
+let battle     = load(LS.battle, null);
+let quotes     = load(LS.quotes, {});  // cardKey -> [{store, brl, at}]
+LS.store='ptcg_store';
+let store      = load(LS.store, {name:'', whats:'', items:[]}); // items: [{key, card, qty, price, cond}]
+
+// ---------- Utils ----------
+const $ = id => document.getElementById(id);
+const esc = s => String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function toast(msg){ const t=$('toast'); t.textContent=msg; t.style.display='block'; clearTimeout(t._h); t._h=setTimeout(()=>t.style.display='none',2400); }
+function closeModal(id){ $(id).classList.remove('open'); }
+function openModal(id){ $(id).classList.add('open'); }
+const uid = () => 'id'+Math.random().toString(36).slice(2,10);
+
+// ---------- Tabs ----------
+document.querySelectorAll('nav button').forEach(b=>{
+  b.onclick = ()=>{
+    document.querySelectorAll('nav button').forEach(x=>x.classList.remove('active'));
+    document.querySelectorAll('section.tab').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');
+    $('tab-'+b.dataset.tab).classList.add('active');
+    if(b.dataset.tab==='colecao') renderCollection();
+    if(b.dataset.tab==='decks') renderDeckList();
+    if(b.dataset.tab==='loja') renderLoja();
+    if(b.dataset.tab==='batalha') initBattleTab();
+  };
+});
+
+// ---------- Câmbio ----------
+let rates = load(LS.rates, null);
+async function getRates(){
+  if(rates && Date.now()-rates.at < 12*3600*1000) return rates;
+  try{
+    const r = await fetch('https://economia.awesomeapi.com.br/json/last/USD-BRL,EUR-BRL');
+    const j = await r.json();
+    rates = { usd:parseFloat(j.USDBRL.bid), eur:parseFloat(j.EURBRL.bid), at:Date.now() };
+    save(LS.rates, rates);
+  }catch(e){ if(!rates) rates = {usd:null,eur:null,at:0}; }
+  return rates;
+}
+const brl = v => v==null ? '—' : 'R$ '+v.toFixed(2).replace('.',',');
+
+// ---------- APIs (oficial + fallback TCGdex) ----------
+function fetchT(url, ms){
+  const ctl=new AbortController();
+  const t=setTimeout(()=>ctl.abort(), ms||10000);
+  return fetch(url,{signal:ctl.signal}).finally(()=>clearTimeout(t));
+}
+async function apiPokemontcg(name, number, setName){
+  const q=[];
+  if(name)    q.push('name:"'+name.trim()+'*"');
+  if(number)  q.push('number:'+number.trim());
+  if(setName) q.push('set.name:"'+setName.trim()+'*"');
+  const url = 'https://api.pokemontcg.io/v2/cards?q='+encodeURIComponent(q.join(' '))+'&pageSize=24&orderBy=-set.releaseDate';
+  const r = await fetchT(url, 10000);
+  if(!r.ok) throw new Error('API retornou '+r.status);
+  return (await r.json()).data || [];
+}
+// --- TCGdex (fallback): busca resumida + detalhe por carta, normalizado pro formato do app
+function normTcgdex(c){
+  const n={ id:'tcgdex-'+c.id, name:c.name };
+  n.supertype = c.category==='Pokemon' ? 'Pokémon' : (c.category==='Energy' ? 'Energy' : 'Trainer');
+  const subs=[];
+  if(c.stage) subs.push(c.stage.replace(/^Stage(\d)$/,'Stage $1'));
+  if(c.suffix) subs.push(c.suffix);
+  if(n.supertype==='Energy' && !subs.length) subs.push('Basic');
+  if(subs.length) n.subtypes=subs;
+  if(c.hp!=null) n.hp=String(c.hp);
+  if(c.types) n.types=c.types;
+  if(c.evolveFrom) n.evolvesFrom=c.evolveFrom;
+  if(c.attacks) n.attacks=c.attacks.map(a=>({name:a.name, cost:a.cost||[], damage:a.damage!=null?String(a.damage):'', text:a.effect||''}));
+  if(c.weaknesses) n.weaknesses=c.weaknesses;
+  if(c.resistances) n.resistances=c.resistances;
+  n.retreatCost=Array(c.retreat||0).fill('Colorless');
+  if(c.rarity) n.rarity=c.rarity;
+  if(c.localId) n.number=String(c.localId);
+  if(c.set) n.set={name:c.set.name, printedTotal:c.set.cardCount&&c.set.cardCount.official};
+  if(c.image) n.images={small:c.image+'/low.webp', large:c.image+'/high.webp'};
+  if(c.effect) n.rules=[c.effect];
+  // preços: variants_detailed[].pricing → formato tcgplayer/cardmarket do app
+  const tp={}, vd=c.variants_detailed||[];
+  let cmTrend=null;
+  vd.forEach(v=>{
+    const p=v.pricing||{};
+    if(p.tcgplayer){ for(const k in p.tcgplayer){ const o=p.tcgplayer[k]; if(o&&typeof o==='object'&&o.marketPrice!=null) tp[k]={market:o.marketPrice}; } }
+    if(p.cardmarket && p.cardmarket.trend!=null && cmTrend==null) cmTrend=p.cardmarket.trend;
+  });
+  if(Object.keys(tp).length) n.tcgplayer={prices:tp};
+  if(cmTrend!=null) n.cardmarket={prices:{trendPrice:cmTrend}};
+  return n;
+}
+async function apiTcgdex(name, number, setName){
+  const params=[];
+  if(name)   params.push('name='+encodeURIComponent(name.trim()));
+  if(number) params.push('localId='+encodeURIComponent(number.trim()));
+  const r = await fetchT('https://api.tcgdex.net/v2/en/cards?'+params.join('&'), 12000);
+  if(!r.ok) throw new Error('TCGdex retornou '+r.status);
+  let brief = await r.json();
+  if(setName){ const s=setName.trim().toLowerCase(); brief=brief.filter(b=>(b.id||'').toLowerCase().includes(s)); }
+  brief = brief.filter(b=>b.image).slice(-24).reverse(); // mais recentes primeiro, só com imagem
+  const details = await Promise.all(brief.map(b=>
+    fetchT('https://api.tcgdex.net/v2/en/cards/'+b.id, 12000).then(x=>x.ok?x.json():null).catch(()=>null)
+  ));
+  return details.filter(Boolean).map(normTcgdex);
+}
+// --- busca com fallback automático
+async function apiSearchAll(name, number, setName){
+  try{
+    const cards = await apiPokemontcg(name, number, setName);
+    if(cards.length) return {cards, source:'Pokémon TCG API (oficial)'};
+  }catch(e){ console.warn('API oficial falhou, usando TCGdex:', e.message); }
+  const cards = await apiTcgdex(name, number, setName);
+  return {cards, source:'TCGdex (reserva)'};
+}
+
+// ---------- Card helpers ----------
+function cardImg(c, size){ return c.images ? (size==='large'? (c.images.large||c.images.small) : (c.images.small||c.images.large)) : null; }
+function isPokemon(c){ return c.supertype==='Pokémon'; }
+function isBasicPokemon(c){ return isPokemon(c) && (c.subtypes||['Basic']).includes('Basic'); }
+function isEnergy(c){ return c.supertype==='Energy'; }
+function isTrainer(c){ return c.supertype==='Trainer'; }
+function isBasicEnergy(c){ return isEnergy(c) && (!c.subtypes || c.subtypes.includes('Basic')); }
+function energyTypeOf(c){
+  if(c.energyType) return c.energyType;
+  for(const t in TYPES){ if((c.name||'').toLowerCase().includes(t.toLowerCase())) return t; }
+  const ptMap={fogo:'Fire','água':'Water',agua:'Water',planta:'Grass','elétrico':'Lightning',eletrico:'Lightning','psíquico':'Psychic',psiquico:'Psychic',lutador:'Fighting','escuridão':'Darkness',escuridao:'Darkness',metal:'Metal',fada:'Fairy'};
+  for(const k in ptMap){ if((c.name||'').toLowerCase().includes(k)) return ptMap[k]; }
+  return 'Colorless';
+}
+function prizeValueOf(c){
+  const st=(c.subtypes||[]).map(s=>s.toUpperCase());
+  if(st.includes('VMAX')||st.includes('VSTAR')) return 3;
+  if(st.includes('EX')||st.includes('GX')||st.includes('V')||st.includes('TERA')) return 2;
+  return 1;
+}
+function bestUsd(c){
+  const p = c.tcgplayer && c.tcgplayer.prices;
+  if(!p) return null;
+  let best=null;
+  for(const k in p){ const m=p[k] && p[k].market; if(m && (best==null||m>best)) best=m; }
+  return best;
+}
+function cardThumbHtml(c, extra){
+  const img = cardImg(c);
+  const inner = img
+    ? '<img src="'+img+'" loading="lazy" alt="">'
+    : '<div class="noimg"><span class="big">'+(isPokemon(c)?tIcon(c.types?c.types[0]:'Colorless'):isEnergy(c)?tIcon(energyTypeOf(c)):'🎴')+'</span><span>'+esc(c.name)+'</span>'+(c.hp?'<span class="muted">HP '+c.hp+'</span>':'')+'</div>';
+  return inner + '<div class="nm">'+esc(c.name)+'</div><div class="st">'+esc(c.set?c.set.name:(c.manual?'manual':''))+(c.number?' · '+esc(c.number):'')+'</div>'+(extra||'');
+}
+
+// =====================================================================
+// BUSCA
+// =====================================================================
+let lastResults = [];
+async function doSearch(){
+  const name=$('s-name').value, num=$('s-number').value, set=$('s-set').value;
+  if(!name && !num){ toast('Digite pelo menos o nome ou o número'); return; }
+  $('s-status').innerHTML='<span class="spin"></span> Buscando nas bases de cartas...';
+  $('s-results').innerHTML='';
+  try{
+    const res = await apiSearchAll(name,num,set);
+    lastResults = res.cards;
+    $('s-status').innerHTML = lastResults.length
+      ? lastResults.length+' carta(s) encontrada(s) <span class="muted">· fonte: '+esc(res.source)+'</span> — clique pra ver detalhes e cotação:'
+      : 'Nada encontrado. Confira a grafia (nomes em inglês) ou tente só o nome.';
+    $('s-results').innerHTML = lastResults.map((c,i)=>'<div class="cardbox" onclick="openCardModal(lastResults['+i+'])">'+cardThumbHtml(c)+'</div>').join('');
+  }catch(e){
+    $('s-status').innerHTML='⚠️ As duas bases de cartas falharam agora ('+esc(e.message)+'). Verifique a internet ou tente de novo em instantes. Você ainda pode usar <b>carta manual</b>.';
+  }
+}
+['s-name','s-number','s-set'].forEach(id=>$(id).addEventListener('keydown',e=>{ if(e.key==='Enter') doSearch(); }));
+
+// ---------- Modal de detalhe/cotação ----------
+async function openCardModal(c){
+  const img = cardImg(c,'large');
+  let html = '<div class="modal-flex">';
+  html += img ? '<img src="'+img+'">' : '<div style="width:240px"><div class="noimg"><span class="big">'+tIcon((c.types&&c.types[0])||energyTypeOf(c))+'</span><span>'+esc(c.name)+'</span></div></div>';
+  html += '<div class="modal-info"><h2 style="color:var(--accent)">'+esc(c.name)+'</h2>';
+  html += '<div style="margin:6px 0">';
+  if(c.set) html+='<span class="pill">📦 '+esc(c.set.name)+' ('+esc(c.set.series||'')+')</span>';
+  if(c.number) html+='<span class="pill">Nº '+esc(c.number)+(c.set&&c.set.printedTotal?'/'+c.set.printedTotal:'')+'</span>';
+  if(c.rarity) html+='<span class="pill">💎 '+esc(c.rarity)+'</span>';
+  if(c.hp) html+='<span class="pill">❤️ HP '+esc(c.hp)+'</span>';
+  if(c.types) html+='<span class="pill">'+c.types.map(t=>tIcon(t)+' '+tPt(t)).join(' / ')+'</span>';
+  if(c.subtypes) html+='<span class="pill">'+esc(c.subtypes.join(', '))+'</span>';
+  html+='</div>';
+  if(c.attacks && c.attacks.length){
+    html+='<h3>Ataques</h3>'+c.attacks.map(a=>'<div class="attack-row"><b>'+ (a.cost||[]).map(tIcon).join('') +' '+esc(a.name)+'</b> — '+esc(a.damage||'—')+(a.text?'<br><span class="muted">'+esc(a.text)+'</span>':'')+'</div>').join('');
+  }
+  html += '<h3>💰 Cotação internacional</h3><div id="modal-prices"><span class="spin"></span> carregando preços...</div>';
+  // ---- cotação Brasil: links de busca + preço manual
+  const q = encodeURIComponent(('carta pokemon '+c.name+' '+(c.number||'')).trim());
+  const lk = (url,label)=>'<a class="btn sm" style="text-decoration:none" target="_blank" href="'+url+'">'+label+'</a>';
+  html += '<h3>🇧🇷 Cotação Brasil (abre a busca pronta)</h3><div class="row">'+
+    lk('https://www.ligapokemon.com.br/?view=cards/search&card='+encodeURIComponent(c.name),'⚡ Liga Pokémon')+
+    lk('https://lista.mercadolivre.com.br/'+q,'🛒 Mercado Livre')+
+    lk('https://www.magazineluiza.com.br/busca/'+q+'/','💙 Magalu')+
+    lk('https://shopee.com.br/search?keyword='+q,'🧡 Shopee')+
+    lk('https://www.amazon.com.br/s?k='+q,'📦 Amazon')+
+  '</div>';
+  html += '<div class="row" style="margin-top:8px">'+
+    '<select id="q-store"><option>Magalu</option><option>Mercado Livre</option><option>Liga Pokémon</option><option>Shopee</option><option>Amazon</option><option>Loja local</option><option>Outro</option></select>'+
+    '<input id="q-val" type="number" step="0.01" min="0" placeholder="R$ que encontrei" style="width:140px">'+
+    '<button class="btn green sm" onclick="saveQuoteFromModal()">💾 Salvar preço</button>'+
+  '</div><div id="modal-quotes"></div>';
+  html += '<div class="row" style="margin-top:14px">';
+  html += '<button class="btn green" onclick=\'addToCollection(window._modalCard)\'>+ Coleção</button>';
+  html += '<select id="modal-decksel">'+decks.map(d=>'<option value="'+d.id+'">'+esc(d.name)+'</option>').join('')+'</select>';
+  html += '<button class="btn" onclick=\'addCardToDeckFromModal()\'>+ Deck</button>';
+  html += '</div></div></div>';
+  window._modalCard = c;
+  $('modal-card-content').innerHTML = html;
+  openModal('modal-card');
+  renderQuotesList(c);
+  // preços
+  const R = await getRates();
+  let ph = '<table><tr><th>Fonte</th><th>Preço</th><th>Em R$</th></tr>';
+  let any=false;
+  const tp = c.tcgplayer && c.tcgplayer.prices;
+  if(tp){ for(const variant in tp){ const m=tp[variant].market; if(m!=null){ any=true;
+    ph+='<tr><td>TCGPlayer ('+esc(variant)+')</td><td>US$ '+m.toFixed(2)+'</td><td class="price-brl">'+(R.usd?brl(m*R.usd):'—')+'</td></tr>'; } } }
+  const cm = c.cardmarket && c.cardmarket.prices;
+  if(cm && cm.trendPrice!=null){ any=true;
+    ph+='<tr><td>Cardmarket (tendência)</td><td>€ '+cm.trendPrice.toFixed(2)+'</td><td class="price-brl">'+(R.eur?brl(cm.trendPrice*R.eur):'—')+'</td></tr>'; }
+  ph+='</table>';
+  if(!any) ph='<p class="muted">Sem cotação disponível pra esta carta (carta manual ou sem preço na base).</p>';
+  else if(R.usd) ph+='<p class="muted" style="margin-top:6px">Câmbio: US$ = '+brl(R.usd)+' · € = '+brl(R.eur)+' (AwesomeAPI)</p>';
+  const el=$('modal-prices'); if(el) el.innerHTML=ph;
+}
+// ---------- preços manuais (Brasil) ----------
+function cardKey(c){ return c.id || c.name; }
+function saveQuoteFromModal(){
+  const c=window._modalCard; if(!c) return;
+  const v=parseFloat($('q-val').value);
+  if(isNaN(v)||v<=0){ toast('Digite o valor em R$'); return; }
+  const k=cardKey(c);
+  if(!quotes[k]) quotes[k]=[];
+  quotes[k].push({store:$('q-store').value, brl:v, at:new Date().toISOString().slice(0,10)});
+  save(LS.quotes,quotes);
+  $('q-val').value='';
+  toast('💾 Preço salvo: '+brl(v));
+  renderQuotesList(c);
+  renderCollection();
+}
+function deleteQuote(k,i){
+  if(!quotes[k]) return;
+  quotes[k].splice(i,1);
+  if(!quotes[k].length) delete quotes[k];
+  save(LS.quotes,quotes);
+  renderQuotesList(window._modalCard);
+  renderCollection();
+}
+function renderQuotesList(c){
+  const el=$('modal-quotes'); if(!el||!c) return;
+  const k=cardKey(c), qs=quotes[k]||[];
+  el.innerHTML = qs.length
+    ? '<table><tr><th>Loja</th><th>Preço</th><th>Data</th><th></th></tr>'+
+      qs.map((x,i)=>'<tr><td>'+esc(x.store)+'</td><td class="price-brl">'+brl(x.brl)+'</td><td class="muted">'+esc(x.at)+'</td><td><button class="btn ghost sm" onclick="deleteQuote(\''+k.replace(/'/g,"\\'")+'\','+i+')">✕</button></td></tr>').join('')+'</table>'+
+      '<p class="muted" style="margin-top:4px">O preço manual mais recente vale como valor da carta no total da coleção.</p>'
+    : '<p class="muted" style="margin-top:6px">Nenhum preço registrado ainda — consulte nos botões acima e salve o que encontrar.</p>';
+}
+function getCardBRL(card, R){
+  const qs=quotes[cardKey(card)];
+  if(qs && qs.length) return qs[qs.length-1].brl;
+  const u=bestUsd(card);
+  if(u!=null && R && R.usd) return u*R.usd;
+  return null;
+}
+function addCardToDeckFromModal(){
+  const sel=$('modal-decksel');
+  if(!sel || !sel.value){ toast('Crie um deck primeiro na aba Decks'); return; }
+  addCardToDeck(sel.value, window._modalCard);
+}
+
+// =====================================================================
+// COLEÇÃO
+// =====================================================================
+function addToCollection(c){
+  const id = c.id || (c.manualId || (c.manualId=uid()));
+  if(collection[id]) collection[id].qty++;
+  else collection[id] = {card:c, qty:1};
+  save(LS.col, collection);
+  toast('✅ '+c.name+' adicionada à coleção ('+collection[id].qty+'x)');
+  renderCollection();
+}
+function renderCollection(){
+  const f = ($('c-filter').value||'').toLowerCase();
+  const entries = Object.entries(collection).filter(([id,e])=>e.card.name.toLowerCase().includes(f));
+  let total=0;
+  Object.values(collection).forEach(e=>{ total+=e.qty; });
+  $('c-total').textContent=total;
+  getRates().then(R=>{
+    let v=0, has=false;
+    Object.values(collection).forEach(e=>{
+      const b=getCardBRL(e.card, R);
+      if(b!=null){ has=true; v+=b*e.qty; }
+    });
+    $('c-value').textContent = has ? brl(v) : '—';
+  });
+  $('c-grid').innerHTML = entries.map(([id,e])=>
+    '<div class="cardbox" onclick="openColModal(\''+id+'\')">'+cardThumbHtml(e.card,'<div class="qty-badge">'+e.qty+'</div>')+'</div>'
+  ).join('') || '<p class="muted">Coleção vazia. Adicione cartas pela aba Buscar.</p>';
+}
+function openColModal(id){
+  const e = collection[id]; if(!e) return;
+  openCardModal(e.card);
+  setTimeout(()=>{
+    const div=document.createElement('div');
+    div.className='row'; div.style.marginTop='10px';
+    div.innerHTML = '<label class="muted">Quantidade:</label>'+
+      '<button class="btn sm ghost" onclick="colQty(\''+id+'\',-1)">−</button>'+
+      '<b>'+e.qty+'</b>'+
+      '<button class="btn sm ghost" onclick="colQty(\''+id+'\',1)">+</button>'+
+      '<button class="btn gold sm" onclick="closeModal(\'modal-card\');addToStore(\''+id+'\')">🏪 Vender</button>'+
+      '<button class="btn red sm" onclick="colRemove(\''+id+'\')">Remover da coleção</button>';
+    $('modal-card-content').querySelector('.modal-info').appendChild(div);
+  },50);
+}
+function colQty(id,d){ if(!collection[id])return; collection[id].qty+=d; if(collection[id].qty<=0) delete collection[id]; save(LS.col,collection); renderCollection(); closeModal('modal-card'); }
+function colRemove(id){ delete collection[id]; save(LS.col,collection); renderCollection(); closeModal('modal-card'); toast('Removida.'); }
+
+// =====================================================================
+// CARTA MANUAL
+// =====================================================================
+let manualToDeck=false;
+function fillTypeSelects(){
+  const opts = Object.keys(TYPES).map(t=>'<option value="'+t+'">'+tIcon(t)+' '+tPt(t)+'</option>').join('');
+  const optsNone = '<option value="">— nenhuma —</option>'+opts;
+  ['m-type','m-energytype'].forEach(id=>$(id).innerHTML=opts);
+  ['m-weak','m-resist'].forEach(id=>$(id).innerHTML=optsNone);
+  $('b-my-type').innerHTML='<option value="">meu tipo?</option>'+opts;
+  $('b-my-weak').innerHTML='<option value="">fraqueza?</option>'+opts;
+}
+function openManualForm(toDeck){ manualToDeck=!!toDeck; openModal('modal-manual'); }
+function manualSuperChange(){
+  const s=$('m-super').value;
+  $('m-pkm-fields').style.display = s==='Pokémon'?'block':'none';
+  $('m-energy-fields').style.display = s==='Energy'?'block':'none';
+  $('m-trainer-fields').style.display = s==='Trainer'?'block':'none';
+}
+function parseCost(str){ return (str||'').toUpperCase().split('').map(ch=>COST_LETTER[ch]).filter(Boolean); }
+function saveManualCard(){
+  const name=$('m-name').value.trim();
+  if(!name){ toast('Dê um nome pra carta'); return; }
+  const s=$('m-super').value;
+  const c={ id:'manual-'+uid(), name, manual:true, supertype: s==='Pokémon'?'Pokémon':(s==='Energy'?'Energy':'Trainer') };
+  if(s==='Pokémon'){
+    c.hp=$('m-hp').value||'60';
+    c.types=[$('m-type').value];
+    const stage=$('m-stage').value;
+    c.subtypes=[stage];
+    if(stage!=='Basic') c.evolvesFrom=$('m-evolvesfrom').value.trim();
+    if($('m-weak').value) c.weaknesses=[{type:$('m-weak').value,value:'×2'}];
+    if($('m-resist').value) c.resistances=[{type:$('m-resist').value,value:'-30'}];
+    c.retreatCost=Array(parseInt($('m-retreat').value||'1')).fill('Colorless');
+    c.attacks=[];
+    if($('m-a1-name').value.trim()) c.attacks.push({name:$('m-a1-name').value.trim(),cost:parseCost($('m-a1-cost').value),damage:$('m-a1-dmg').value||'',text:$('m-a1-txt').value.trim()});
+    if($('m-a2-name').value.trim()) c.attacks.push({name:$('m-a2-name').value.trim(),cost:parseCost($('m-a2-cost').value),damage:$('m-a2-dmg').value||'',text:$('m-a2-txt').value.trim()});
+  } else if(s==='Energy'){
+    c.subtypes=['Basic']; c.energyType=$('m-energytype').value;
+  } else {
+    c.rules=[$('m-trainertext').value.trim()];
+  }
+  closeModal('modal-manual');
+  if(manualToDeck && currentDeckId){ addCardToDeck(currentDeckId, c); }
+  else { addToCollection(c); }
+  // limpa form
+  ['m-name','m-hp','m-evolvesfrom','m-a1-name','m-a1-cost','m-a1-dmg','m-a1-txt','m-a2-name','m-a2-cost','m-a2-dmg','m-a2-txt','m-trainertext'].forEach(id=>{const el=$(id); if(el) el.value='';});
+}
+
+// =====================================================================
+// DECKS
+// =====================================================================
+let currentDeckId=null;
+function createDeck(){
+  const name=$('d-newname').value.trim();
+  if(!name){ toast('Dê um nome pro deck'); return; }
+  const d={id:uid(), name, cards:[]};
+  decks.push(d); save(LS.decks,decks);
+  $('d-newname').value='';
+  renderDeckList(); openDeckEditor(d.id);
+}
+function deckCount(d){ return d.cards.reduce((s,e)=>s+e.qty,0); }
+function renderDeckList(){
+  $('d-list').innerHTML = decks.map(d=>{
+    const n=deckCount(d);
+    return '<div class="deck-list-item"><div><b>'+esc(d.name)+'</b> <span class="muted">('+n+'/60 cartas)</span></div>'+
+      '<div class="row"><button class="btn sm" onclick="openDeckEditor(\''+d.id+'\')">✏️ Editar</button>'+
+      '<button class="btn red sm" onclick="deleteDeck(\''+d.id+'\')">🗑️</button></div></div>';
+  }).join('') || '<p class="muted">Nenhum deck ainda.</p>';
+}
+function deleteDeck(id){
+  if(!confirm('Excluir este deck?')) return;
+  decks=decks.filter(d=>d.id!==id); save(LS.decks,decks);
+  if(currentDeckId===id) closeDeckEditor();
+  renderDeckList();
+}
+function openDeckEditor(id){
+  currentDeckId=id;
+  const d=decks.find(x=>x.id===id); if(!d) return;
+  $('d-editor').style.display='block';
+  $('d-editor-title').textContent='✏️ '+d.name;
+  $('d-energy-btns').innerHTML = Object.keys(TYPES).filter(t=>t!=='Colorless'&&t!=='Dragon').map(t=>
+    '<button class="btn sm ghost" onclick="addBasicEnergy(\''+t+'\')">'+tIcon(t)+' '+tPt(t)+'</button>').join('');
+  renderDeckCards();
+}
+function closeDeckEditor(){ currentDeckId=null; $('d-editor').style.display='none'; renderDeckList(); }
+function addBasicEnergy(t){
+  addCardToDeck(currentDeckId, {id:'energy-'+t, name:'Energia '+tPt(t), supertype:'Energy', subtypes:['Basic'], energyType:t, manual:true});
+}
+function addCardToDeck(deckId, card){
+  const d=decks.find(x=>x.id===deckId); if(!d){ toast('Deck não encontrado'); return; }
+  const key = card.id || card.name;
+  let e = d.cards.find(x=>(x.card.id||x.card.name)===key);
+  if(e){
+    if(!isBasicEnergy(card) && e.qty>=4){ toast('⚠️ Máximo 4 cópias de '+card.name); return; }
+    e.qty++;
+  } else d.cards.push({card, qty:1});
+  save(LS.decks,decks);
+  toast('✅ '+card.name+' → '+d.name);
+  if(currentDeckId===deckId) renderDeckCards();
+}
+function deckCardQty(deckId, key, delta){
+  const d=decks.find(x=>x.id===deckId); if(!d) return;
+  const e=d.cards.find(x=>(x.card.id||x.card.name)===key); if(!e) return;
+  if(delta>0 && !isBasicEnergy(e.card) && e.qty>=4){ toast('Máx. 4 cópias'); return; }
+  e.qty+=delta;
+  if(e.qty<=0) d.cards=d.cards.filter(x=>x!==e);
+  save(LS.decks,decks); renderDeckCards();
+}
+function renderDeckCards(){
+  const d=decks.find(x=>x.id===currentDeckId); if(!d) return;
+  const n=deckCount(d);
+  const cnt = $('d-count'); cnt.textContent=n; cnt.className='deck-count '+(n===60?'ok':'bad');
+  let npkm=0,ntrn=0,nerg=0;
+  d.cards.forEach(e=>{ if(isPokemon(e.card))npkm+=e.qty; else if(isEnergy(e.card))nerg+=e.qty; else ntrn+=e.qty; });
+  $('d-npkm').textContent=npkm; $('d-ntrn').textContent=ntrn; $('d-nerg').textContent=nerg;
+  const order = c => isPokemon(c)?0:(isTrainer(c)?1:2);
+  const sorted=[...d.cards].sort((a,b)=>order(a.card)-order(b.card)||a.card.name.localeCompare(b.card.name));
+  $('d-cards').innerHTML = sorted.map(e=>{
+    const key=(e.card.id||e.card.name).replace(/'/g,"\\'");
+    const icon = isPokemon(e.card)?tIcon(e.card.types?e.card.types[0]:'Colorless'):(isEnergy(e.card)?tIcon(energyTypeOf(e.card)):'🎓');
+    return '<div class="deck-list-item"><div>'+icon+' <b>'+e.qty+'x</b> '+esc(e.card.name)+
+      (e.card.hp?' <span class="muted">HP'+e.card.hp+'</span>':'')+
+      (e.card.set?' <span class="muted">('+esc(e.card.set.name)+')</span>':'')+'</div>'+
+      '<div class="row"><button class="btn sm ghost" onclick="deckCardQty(\''+currentDeckId+'\',\''+key+'\',-1)">−</button>'+
+      '<button class="btn sm ghost" onclick="deckCardQty(\''+currentDeckId+'\',\''+key+'\',1)">+</button></div></div>';
+  }).join('') || '<p class="muted">Deck vazio.</p>';
+}
+let deckSearchResults=[];
+async function deckSearch(){
+  const q=$('d-search').value.trim(); if(!q) return;
+  $('d-search-results').innerHTML='<p class="muted"><span class="spin"></span> buscando...</p>';
+  try{
+    const res = await apiSearchAll(q,'','');
+    deckSearchResults = res.cards;
+    $('d-search-results').innerHTML = deckSearchResults.map((c,i)=>
+      '<div class="cardbox" onclick="addCardToDeck(currentDeckId, deckSearchResults['+i+'])">'+cardThumbHtml(c,'<div class="st" style="color:var(--green)">clique p/ adicionar</div>')+'</div>').join('') || '<p class="muted">nada encontrado</p>';
+  }catch(e){ $('d-search-results').innerHTML='<p class="muted">⚠️ as duas APIs falharam agora — tente de novo ou use carta manual</p>'; }
+}
+$('d-search').addEventListener('keydown',e=>{ if(e.key==='Enter') deckSearch(); });
+
+// =====================================================================
+// BATALHA vs IA
+// =====================================================================
+function initBattleTab(){
+  $('b-aideck').innerHTML = decks.map(d=>'<option value="'+d.id+'">'+esc(d.name)+' ('+deckCount(d)+' cartas)</option>').join('') || '<option value="">— crie um deck primeiro —</option>';
+  if(battle && battle.on){ $('b-setup').style.display='none'; $('b-arena').style.display='block'; renderBattle(); }
+  else { $('b-setup').style.display='block'; $('b-arena').style.display='none'; }
+}
+function expandDeck(d){
+  const arr=[];
+  d.cards.forEach(e=>{ for(let i=0;i<e.qty;i++) arr.push(JSON.parse(JSON.stringify(e.card))); });
+  return arr;
+}
+function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
+function mkSlot(card){ return {card, damage:0, energies:[], playedTurn:battle?battle.turnCount:0, evolvedTurn:-1}; }
+function saveBattle(){ save(LS.battle, battle); }
+
+function startBattle(){
+  const deckId=$('b-aideck').value;
+  const d=decks.find(x=>x.id===deckId);
+  if(!d){ toast('Escolha um deck pra IA (crie na aba Decks)'); return; }
+  const cards=expandDeck(d);
+  if(cards.length<20){ toast('Deck da IA muito pequeno ('+cards.length+' cartas). Ideal: 60.'); if(cards.length<7) return; }
+  if(!cards.some(isBasicPokemon)){ toast('⚠️ O deck da IA não tem nenhum Pokémon Básico!'); return; }
+
+  battle = { on:true, turnCount:0, deckName:d.name,
+    ai:{deck:shuffle(cards), hand:[], prizes:[], discard:[], active:null, bench:[]},
+    playerPrizes:0, aiPrizesTaken:0, firstPlayer:null, aiFirstTurnDone:false, log:[] };
+
+  const ins=[];
+  ins.push('🎲 <b>Preparação da partida</b> — deck da IA: '+esc(d.name));
+  // mão inicial + mulligan
+  let mulligans=0;
+  while(true){
+    battle.ai.hand = battle.ai.deck.splice(0,7);
+    if(battle.ai.hand.some(isBasicPokemon)) break;
+    mulligans++;
+    battle.ai.deck.push(...battle.ai.hand); battle.ai.hand=[];
+    shuffle(battle.ai.deck);
+    if(mulligans>20) break;
+  }
+  if(mulligans>0) ins.push('🔄 A IA teve <b>'+mulligans+' mulligan(s)</b> (sem Básico na mão). Você pode comprar +'+mulligans+' carta(s) extra!');
+  // prêmios
+  battle.ai.prizes = battle.ai.deck.splice(0,6);
+  ins.push('🏆 A IA separou 6 prêmios (virtuais). Separe também os SEUS 6 prêmios físicos.');
+  // ativo + banco
+  const basics = battle.ai.hand.filter(isBasicPokemon).sort((a,b)=>(parseInt(b.hp)||0)-(parseInt(a.hp)||0));
+  const act = basics.shift();
+  battle.ai.hand.splice(battle.ai.hand.indexOf(act),1);
+  battle.ai.active = mkSlot(act);
+  ins.push('👊 IA coloca <b>'+esc(act.name)+'</b> como Ativo. <i>(pegue a carta física e coloque na posição ativa dela)</i>');
+  basics.slice(0,5).forEach(b=>{
+    battle.ai.hand.splice(battle.ai.hand.indexOf(b),1);
+    battle.ai.bench.push(mkSlot(b));
+    ins.push('⬇️ IA coloca <b>'+esc(b.name)+'</b> no banco.');
+  });
+  // quem começa
+  const f=$('b-first').value;
+  if(f==='coin'){ battle.firstPlayer = Math.random()<0.5?'ai':'player'; ins.push('🪙 Moeda: <b>'+(battle.firstPlayer==='ai'?'IA começa!':'VOCÊ começa!')+'</b>'); }
+  else { battle.firstPlayer=f; ins.push('▶ '+(f==='ai'?'IA começa.':'Você começa.')); }
+  ins.push(battle.firstPlayer==='ai'
+    ? '👉 Clique em <b>Executar turno da IA</b> pra ela jogar o 1º turno (sem atacar, regra oficial).'
+    : '👉 Jogue seu 1º turno físico (sem atacar). Depois clique em <b>Executar turno da IA</b>.');
+  pushLog('Preparação', ins);
+  saveBattle();
+  initBattleTab();
+  toast('⚔️ Batalha iniciada!');
+}
+
+function pushLog(title, instrs){
+  battle.log.push({title, instrs});
+  if(battle.log.length>60) battle.log.shift();
+}
+
+// ---------- energia / custo ----------
+function countEnergies(slot){
+  const m={};
+  slot.energies.forEach(e=>{ const t=energyTypeOf(e); m[t]=(m[t]||0)+1; });
+  return m;
+}
+function canPay(cost, slot){
+  if(!cost || !cost.length) return true;
+  const avail=countEnergies(slot);
+  let colorlessNeeded=0;
+  for(const t of cost){
+    if(t==='Colorless'){ colorlessNeeded++; continue; }
+    if(avail[t]>0) avail[t]--; else return false;
+  }
+  const left=Object.values(avail).reduce((s,v)=>s+v,0);
+  return left>=colorlessNeeded;
+}
+function baseDamage(atk){ const m=String(atk.damage||'').match(/\d+/); return m?parseInt(m[0]):0; }
+function affordableAttacks(slot){ return (slot.card.attacks||[]).filter(a=>canPay(a.cost, slot)); }
+function bestAttack(slot, targetWeak, targetResist, myType){
+  const atks=affordableAttacks(slot);
+  if(!atks.length) return null;
+  const t = slot.card.types ? slot.card.types[0] : 'Colorless';
+  let best=null, bestDmg=-1;
+  for(const a of atks){
+    let d=baseDamage(a);
+    if(targetWeak && targetWeak===t) d*=2;
+    if(targetResist && targetResist===t) d=Math.max(0,d-30);
+    // prefere ataque com efeito se dano igual
+    if(d>bestDmg || (d===bestDmg && a.text)){ best=a; bestDmg=d; }
+  }
+  return {attack:best, dmg:bestDmg, type:t};
+}
+function neededEnergyType(slot){
+  // qual tipo de energia falta pro melhor ataque não pagável
+  const atks=(slot.card.attacks||[]).filter(a=>!canPay(a.cost,slot));
+  if(!atks.length) return null;
+  atks.sort((a,b)=>baseDamage(b)-baseDamage(a));
+  const cost=[...(atks[0].cost||[])];
+  const avail=countEnergies(slot);
+  for(const t of cost){
+    if(t==='Colorless') continue;
+    if(avail[t]>0){ avail[t]--; continue; }
+    return t;
+  }
+  return 'Colorless';
+}
+
+// ---------- treinadores conhecidos ----------
+function trainerKind(c){
+  const n=(c.name||'').toLowerCase();
+  if(/potion|poção|pocao/.test(n)) return 'potion';
+  if(/professor.*(research|pesquisa)|pesquisa de professores/.test(n)) return 'research';
+  if(/^(hop|hau|cheren|tierno|shauna)/.test(n)) return 'draw3';
+  if(/switch|troca/.test(n) && !/switch cart/.test(n)) return 'switch';
+  if(/nest ball|bola ninho|quick ball|bola rápida|bola rapida|level ball/.test(n)) return 'searchBasic';
+  if(/boss('|’)?s orders|ordens do chefe/.test(n)) return 'boss';
+  if(/energy retrieval|resgate de energia/.test(n)) return 'energyRetrieval';
+  return null;
+}
+
+// ---------- turno da IA ----------
+function aiExecuteTurn(){
+  if(!battle || !battle.on) return;
+  const ai=battle.ai, ins=[];
+  battle.turnCount++;
+  const isAiFirstEver = (battle.firstPlayer==='ai' && !battle.aiFirstTurnDone);
+
+  // 1. comprar
+  if(ai.deck.length===0){ pushLog('Turno '+battle.turnCount+' — IA', ['🃏 A IA não tem mais cartas pra comprar...']); return endBattle('player','A IA não conseguiu comprar (deck-out)! <b>VOCÊ VENCEU! 🎉</b>'); }
+  ai.hand.push(ai.deck.shift());
+  ins.push('🃏 IA compra 1 carta ('+ai.hand.length+' na mão, '+ai.deck.length+' no deck).');
+
+  // 2. básicos pro banco
+  for(const c of [...ai.hand]){
+    if(isBasicPokemon(c) && ai.bench.length<5){
+      ai.hand.splice(ai.hand.indexOf(c),1);
+      ai.bench.push(mkSlot(c));
+      ins.push('⬇️ IA coloca <b>'+esc(c.name)+'</b> no banco. <i>(coloque a carta física no banco dela)</i>');
+    }
+  }
+
+  // 3. evoluções (não no 1º turno da IA, não em pokémon jogado neste turno)
+  if(battle.turnCount>1 || battle.firstPlayer==='player'){
+    const slots=[ai.active,...ai.bench].filter(Boolean);
+    for(const c of [...ai.hand]){
+      if(!isPokemon(c) || !c.evolvesFrom) continue;
+      const target=slots.find(s=>s.card.name===c.evolvesFrom && s.playedTurn<battle.turnCount && s.evolvedTurn!==battle.turnCount);
+      if(target){
+        ai.hand.splice(ai.hand.indexOf(c),1);
+        ai.discard.push(target.card);
+        const oldName = target.card.name;
+        target.card=c; target.evolvedTurn=battle.turnCount;
+        // HP herda dano
+        ins.push('⬆️ IA evolui <b>'+esc(oldName)+'</b> para <b>'+esc(c.name)+'</b>! <i>(troque a carta física, mantenha dano e energias)</i>');
+      }
+    }
+  }
+
+  // 4. treinadores conhecidos (1 suporte por turno, itens livres)
+  let supporterUsed=false;
+  for(const c of [...ai.hand]){
+    if(!isTrainer(c)) continue;
+    const kind=trainerKind(c);
+    if(!kind) continue;
+    const isSupporter=(c.subtypes||[]).includes('Supporter')||['research','draw3','boss'].includes(kind);
+    if(isSupporter && supporterUsed) continue;
+    let used=false;
+    if(kind==='potion' && ai.active && ai.active.damage>=30){
+      ai.active.damage=Math.max(0,ai.active.damage-30);
+      ins.push('🧪 IA usa <b>'+esc(c.name)+'</b>: cura 30 de dano do '+esc(ai.active.card.name)+' (dano agora: '+ai.active.damage+'). <i>(tire 3 marcadores)</i>'); used=true;
+    }
+    else if(kind==='research' && ai.hand.length<=3 && ai.deck.length>=7){
+      const discarded=ai.hand.filter(x=>x!==c);
+      ai.discard.push(...discarded);
+      ai.hand=[c];
+      ai.hand=ai.deck.splice(0,7);
+      ai.discard.push(c);
+      ins.push('👩‍🔬 IA usa <b>'+esc(c.name)+'</b>: descarta a mão ('+discarded.length+' cartas) e compra 7.'); used=true; supporterUsed=true;
+      // continue não — sai do loop pois a mão mudou
+      break;
+    }
+    else if(kind==='draw3' && ai.deck.length>=3){
+      ai.hand.splice(ai.hand.indexOf(c),1); ai.discard.push(c);
+      ai.hand.push(...ai.deck.splice(0,3));
+      ins.push('🙋 IA usa <b>'+esc(c.name)+'</b>: compra 3 cartas.'); used=true; supporterUsed=true;
+    }
+    else if(kind==='searchBasic' && ai.bench.length<5){
+      const idx=ai.deck.findIndex(isBasicPokemon);
+      if(idx>=0){
+        const found=ai.deck.splice(idx,1)[0];
+        ai.hand.splice(ai.hand.indexOf(c),1); ai.discard.push(c);
+        ai.bench.push(mkSlot(found));
+        shuffle(ai.deck);
+        ins.push('🔮 IA usa <b>'+esc(c.name)+'</b>: busca <b>'+esc(found.name)+'</b> no deck e coloca no banco. <i>(pegue a carta física)</i>'); used=true;
+      }
+    }
+    else if(kind==='boss'){
+      ai.hand.splice(ai.hand.indexOf(c),1); ai.discard.push(c);
+      ins.push('😈 IA usa <b>'+esc(c.name)+'</b>! <b>Traga do SEU banco pro ativo o Pokémon com MENOS HP restante.</b>'); used=true; supporterUsed=true;
+    }
+    else if(kind==='energyRetrieval'){
+      const ergs=ai.discard.filter(isBasicEnergy).slice(0,2);
+      if(ergs.length){
+        ergs.forEach(e=>{ ai.discard.splice(ai.discard.indexOf(e),1); ai.hand.push(e); });
+        ai.hand.splice(ai.hand.indexOf(c),1); ai.discard.push(c);
+        ins.push('♻️ IA usa <b>'+esc(c.name)+'</b>: recupera '+ergs.length+' energia(s) do descarte.'); used=true;
+      }
+    }
+    if(used && kind!=='research'){ /* segue tentando outros itens */ }
+  }
+
+  // 5. anexar energia (1 por turno)
+  const energyInHand = ai.hand.filter(isEnergy);
+  if(energyInHand.length && ai.active){
+    // alvo: ativo se falta energia; senão banco que precisa
+    let target=null, need=null;
+    if(!bestAttack(ai.active) || neededEnergyType(ai.active)){ target=ai.active; need=neededEnergyType(ai.active); }
+    if(!target){
+      for(const b of ai.bench){ const n=neededEnergyType(b); if(n){ target=b; need=n; break; } }
+    }
+    if(!target){ target=ai.active; need=null; }
+    // escolhe energia certa
+    let en = need ? energyInHand.find(e=>energyTypeOf(e)===need) : null;
+    if(!en) en = energyInHand[0];
+    if(en && !(need===null && bestAttack(ai.active) && target===ai.active && (ai.active.energies.length>= ( (ai.active.card.attacks||[]).reduce((m,a)=>Math.max(m,(a.cost||[]).length),0) +1 )))){
+      ai.hand.splice(ai.hand.indexOf(en),1);
+      target.energies.push(en);
+      ins.push('⚡ IA anexa <b>'+esc(en.name)+'</b> em <b>'+esc(target.card.name)+'</b>'+(target===ai.active?' (Ativo)':' (banco)')+'. <i>(coloque a energia física embaixo da carta)</i>');
+    }
+  }
+
+  // 6. recuo (se ativo não consegue atacar e banco tem atacante pronto)
+  if(ai.active && !affordableAttacks(ai.active).length){
+    const readyBench = ai.bench.filter(b=>affordableAttacks(b).length);
+    const retreatCost=(ai.active.card.retreatCost||[]).length;
+    if(readyBench.length && ai.active.energies.length>=retreatCost){
+      // paga recuo descartando energias
+      for(let i=0;i<retreatCost;i++) ai.discard.push(ai.active.energies.pop());
+      const newActive=readyBench.sort((a,b)=>{
+        const ba=bestAttack(a),bb=bestAttack(b);
+        return (bb?bb.dmg:0)-(ba?ba.dmg:0);
+      })[0];
+      ai.bench.splice(ai.bench.indexOf(newActive),1);
+      ai.bench.push(ai.active);
+      ins.push('🔁 IA recua <b>'+esc(ai.active.card.name)+'</b> (paga '+retreatCost+' energia) e promove <b>'+esc(newActive.card.name)+'</b> como novo Ativo!');
+      ai.active=newActive;
+    }
+  }
+
+  // 7. ataque
+  const noAttackTurn = isAiFirstEver; // 1º jogador não ataca no 1º turno
+  if(ai.active && !noAttackTurn){
+    const pWeak=$('b-my-weak').value||null;
+    const pick=bestAttack(ai.active, pWeak, null);
+    if(pick && pick.attack){
+      const a=pick.attack;
+      let d=baseDamage(a);
+      let dmgTxt = d>0 ? String(d) : (a.damage||'0');
+      let extra='';
+      if(pWeak && pWeak===pick.type && d>0){ dmgTxt=d+' ×2 (fraqueza) = <b>'+(d*2)+'</b>'; }
+      else if(d>0){ dmgTxt='<b>'+d+'</b>'; }
+      if(String(a.damage||'').match(/[+×x]/)) extra=' <i>(dano tem modificador "'+esc(a.damage)+'" — confira o texto)</i>';
+      ins.push('⚔️ <b>IA ATACA!</b> '+esc(ai.active.card.name)+' usa <b>'+esc(a.name)+'</b> '+(a.cost||[]).map(tIcon).join('')+' → '+dmgTxt+' de dano no seu Pokémon Ativo.'+extra);
+      if(a.text) ins.push('📖 Efeito do ataque (aplique na mesa): <i>'+esc(a.text)+'</i>');
+      ins.push('👉 Marque o dano no seu Pokémon. Se ele foi nocauteado, clique em <b>☠️ Meu Ativo foi nocauteado</b>. Depois jogue o SEU turno e registre seu ataque.');
+    } else {
+      ins.push('💤 IA não consegue atacar este turno (sem energia suficiente). Passou a vez.');
+      ins.push('👉 Jogue o SEU turno e registre seu ataque.');
+    }
+  } else if(noAttackTurn){
+    ins.push('🚫 1º turno da IA: não pode atacar (regra). Fim do turno dela.');
+    ins.push('👉 Jogue o SEU turno normalmente e registre seu ataque.');
+  }
+  if(isAiFirstEver) battle.aiFirstTurnDone=true;
+
+  pushLog('Turno '+battle.turnCount+' — 🤖 IA', ins);
+  saveBattle(); renderBattle();
+}
+
+// ---------- ações do jogador ----------
+function playerAttack(){
+  if(!battle||!battle.on||!battle.ai.active) return;
+  let d=parseInt($('b-my-dmg').value);
+  if(isNaN(d)||d<0){ toast('Informe o dano do seu ataque'); return; }
+  const ins=[];
+  const slot=battle.ai.active;
+  const myType=$('b-my-type').value||null;
+  let final=d;
+  if(!$('b-dmg-final').checked && myType){
+    const w=(slot.card.weaknesses||[]).find(x=>x.type===myType);
+    const r=(slot.card.resistances||[]).find(x=>x.type===myType);
+    if(w){ final=d*2; ins.push('💥 Fraqueza da '+esc(slot.card.name)+' a '+tIcon(myType)+tPt(myType)+': dano ×2 → <b>'+final+'</b>'); }
+    if(r){ final=Math.max(0,final-30); ins.push('🛡️ Resistência: −30 → <b>'+final+'</b>'); }
+  }
+  slot.damage+=final;
+  const hp=parseInt(slot.card.hp)||60;
+  ins.unshift('🧑 Você atacou a <b>'+esc(slot.card.name)+'</b> da IA: '+final+' de dano (total '+slot.damage+'/'+hp+').');
+  $('b-my-dmg').value='';
+  if(slot.damage>=hp){
+    const prizes=prizeValueOf(slot.card);
+    ins.push('☠️ <b>'+esc(slot.card.name)+' da IA foi NOCAUTEADA!</b> Você pega <b>'+prizes+' prêmio(s)</b>! 🏆');
+    battle.playerPrizes+=prizes;
+    battle.ai.discard.push(slot.card, ...slot.energies);
+    battle.ai.active=null;
+    if(battle.playerPrizes>=6){
+      pushLog('🧑 Seu ataque', ins); saveBattle(); renderBattle();
+      return endBattle('player','Você pegou todos os 6 prêmios! <b>VOCÊ VENCEU! 🎉🏆</b>');
+    }
+    if(!battle.ai.bench.length){
+      pushLog('🧑 Seu ataque', ins); saveBattle(); renderBattle();
+      return endBattle('player','A IA ficou sem Pokémon em jogo! <b>VOCÊ VENCEU! 🎉🏆</b>');
+    }
+    // promove
+    const next=battle.ai.bench.sort((a,b)=>{
+      const ea=a.energies.length,eb=b.energies.length;
+      if(eb!==ea) return eb-ea;
+      return (parseInt(b.card.hp)||0)-(parseInt(a.card.hp)||0);
+    })[0];
+    battle.ai.bench.splice(battle.ai.bench.indexOf(next),1);
+    battle.ai.active=next;
+    ins.push('▶ IA promove <b>'+esc(next.card.name)+'</b> do banco como novo Ativo. <i>(mova a carta física)</i>');
+  }
+  pushLog('🧑 Seu ataque', ins);
+  saveBattle(); renderBattle();
+}
+function playerKO(){
+  if(!battle||!battle.on) return;
+  const n=parseInt(prompt('Quantos prêmios a IA pega? (1 normal, 2 se seu Pokémon era EX/GX/V, 3 se VMAX)','1'))||1;
+  const ins=['☠️ Seu Pokémon Ativo foi nocauteado.'];
+  for(let i=0;i<n;i++){
+    if(battle.ai.prizes.length){ battle.ai.hand.push(battle.ai.prizes.shift()); }
+  }
+  battle.aiPrizesTaken+=n;
+  ins.push('🏆 IA pega '+n+' prêmio(s) (foi pra mão dela). Prêmios restantes da IA: '+battle.ai.prizes.length+'.');
+  if(battle.ai.prizes.length===0){
+    pushLog('☠️ Nocaute', ins); saveBattle(); renderBattle();
+    return endBattle('ai','A IA pegou todos os prêmios dela... <b>A IA VENCEU! 🤖</b> Revanche?');
+  }
+  ins.push('👉 Promova um novo Pokémon Ativo do SEU banco (se não tiver nenhum, a IA vence — use Encerrar batalha).');
+  pushLog('☠️ Nocaute', ins);
+  saveBattle(); renderBattle();
+}
+function aiHeal(){
+  if(!battle||!battle.on||!battle.ai.active) return;
+  const v=parseInt(prompt('Curar quanto de dano do ativo da IA? (efeito que você aplicou)','30'))||0;
+  battle.ai.active.damage=Math.max(0,battle.ai.active.damage-v);
+  pushLog('💧 Ajuste', ['Ativo da IA curado em '+v+' (dano agora: '+battle.ai.active.damage+').']);
+  saveBattle(); renderBattle();
+}
+function aiForceSwitch(){
+  if(!battle||!battle.on||!battle.ai.bench.length){ toast('IA não tem banco'); return; }
+  // você escolhe: IA promove o com menos energia (pior pra ela)
+  const victim=battle.ai.bench.sort((a,b)=>a.energies.length-b.energies.length||((parseInt(a.card.hp)||0)-(parseInt(b.card.hp)||0)))[0];
+  battle.ai.bench.splice(battle.ai.bench.indexOf(victim),1);
+  if(battle.ai.active) battle.ai.bench.push(battle.ai.active);
+  battle.ai.active=victim;
+  pushLog('🔁 Efeito seu', ['Você forçou a troca: <b>'+esc(victim.card.name)+'</b> agora é o Ativo da IA. <i>(mova as cartas físicas)</i>']);
+  saveBattle(); renderBattle();
+}
+function endBattle(winner,msg){
+  pushLog('🏁 FIM DE JOGO', ['<span class="win">'+msg+'</span>']);
+  battle.on=false;
+  saveBattle(); renderBattle();
+  $('b-aiturn-btn').style.display='none';
+}
+function confirmEndBattle(){
+  if(!confirm('Encerrar a batalha atual?')) return;
+  battle=null; save(LS.battle,null);
+  $('b-aiturn-btn').style.display='';
+  initBattleTab();
+}
+
+// ---------- render batalha ----------
+function slotHtml(slot, isActive){
+  const hp=parseInt(slot.card.hp)||60;
+  const rem=Math.max(0,hp-slot.damage);
+  const pct=rem/hp*100;
+  const cls=pct<=25?'low':(pct<=55?'mid':'');
+  const img=cardImg(slot.card);
+  return '<div class="pkm-slot'+(isActive?' active-slot':'')+'">'+
+    (isActive?'<div style="color:var(--accent);font-weight:800;margin-bottom:3px">ATIVO</div>':'')+
+    (img?'<img src="'+img+'">':'<div class="noimg"><span class="big">'+tIcon(slot.card.types?slot.card.types[0]:'Colorless')+'</span><span>'+esc(slot.card.name)+'</span></div>')+
+    '<div style="font-weight:700;margin-top:4px">'+esc(slot.card.name)+'</div>'+
+    '<div class="hpbar"><div class="'+cls+'" style="width:'+pct+'%"></div></div>'+
+    '<div class="muted">'+rem+'/'+hp+' HP'+(slot.damage?' ('+slot.damage+' dano)':'')+'</div>'+
+    '<div class="energy-dots">'+slot.energies.map(e=>tIcon(energyTypeOf(e))).join('')+'</div>'+
+  '</div>';
+}
+function renderBattle(){
+  if(!battle) return;
+  $('b-ai-deck').textContent=battle.ai.deck.length;
+  $('b-ai-hand').textContent=battle.ai.hand.length;
+  $('b-ai-prizes').textContent=battle.ai.prizes.length;
+  $('b-ai-discard').textContent=battle.ai.discard.length;
+  $('b-my-prizes').textContent=battle.playerPrizes;
+  $('b-turncount').textContent=battle.turnCount;
+  let bh='';
+  if(battle.ai.active) bh+=slotHtml(battle.ai.active,true);
+  battle.ai.bench.forEach(s=>bh+=slotHtml(s,false));
+  $('b-ai-board').innerHTML=bh||'<p class="muted">— sem Pokémon em jogo —</p>';
+  const lg=$('battle-log');
+  lg.innerHTML=battle.log.map((b,i)=>
+    '<div class="turn-block'+(i===battle.log.length-1?' latest':'')+'"><div class="tt">'+b.title+'</div>'+
+    b.instrs.map(x=>'<div class="instr">'+x+'</div>').join('')+'</div>'
+  ).join('');
+  lg.scrollTop=lg.scrollHeight;
+}
+
+// =====================================================================
+// MINHA LOJA — publicar cartas à venda
+// =====================================================================
+function saveStore(){ save(LS.store, store); }
+function lojaConfigChanged(){ store.name=$('l-name').value.trim(); store.whats=$('l-whats').value.replace(/\D/g,''); saveStore(); }
+function suggestedPrice(card){
+  const b=getCardBRL(card, rates||{});
+  return b!=null ? b.toFixed(2) : '';
+}
+function addToStore(colId){
+  const e=collection[colId]; if(!e) return;
+  const k=cardKey(e.card);
+  if(store.items.some(i=>i.key===k)){ toast('Essa carta já está na loja — edite lá em cima'); return; }
+  const sug=suggestedPrice(e.card);
+  const p=parseFloat((prompt('Preço de venda (R$) de '+e.card.name+':', sug)||'').replace(',','.'));
+  if(isNaN(p)||p<=0) return;
+  store.items.push({key:k, card:e.card, qty:1, price:p, cond:'NM (perfeita)'});
+  saveStore(); renderLoja();
+  toast('🏪 '+e.card.name+' à venda por '+brl(p));
+}
+function storeUpd(i,field,val){
+  const it=store.items[i]; if(!it) return;
+  if(field==='qty') it.qty=Math.max(1,parseInt(val)||1);
+  if(field==='price') it.price=Math.max(0,parseFloat(String(val).replace(',','.'))||it.price);
+  if(field==='cond') it.cond=val;
+  saveStore(); renderLojaTotals();
+}
+function storeRemove(i){ store.items.splice(i,1); saveStore(); renderLoja(); }
+function renderLojaTotals(){
+  $('l-count').textContent=store.items.reduce((s,i)=>s+i.qty,0);
+  $('l-total').textContent=brl(store.items.reduce((s,i)=>s+i.qty*i.price,0));
+}
+function renderLoja(){
+  $('l-name').value=store.name||'';
+  $('l-whats').value=store.whats||'';
+  $('cl-url').value=cloud.url||'';
+  $('cl-key').value=cloud.key||'';
+  $('cl-email').value=cloud.email||'';
+  $('l-items').innerHTML = store.items.map((it,i)=>{
+    const icon=isPokemon(it.card)?tIcon(it.card.types?it.card.types[0]:'Colorless'):(isEnergy(it.card)?tIcon(energyTypeOf(it.card)):'🎓');
+    return '<div class="deck-list-item"><div>'+icon+' <b>'+esc(it.card.name)+'</b>'+
+      (it.card.set?' <span class="muted">('+esc(it.card.set.name)+(it.card.number?' · '+esc(it.card.number):'')+')</span>':'')+'</div>'+
+      '<div class="row">'+
+      '<label class="muted">qtd</label><input type="number" min="1" value="'+it.qty+'" style="width:60px" onchange="storeUpd('+i+',\'qty\',this.value)">'+
+      '<label class="muted">R$</label><input type="number" step="0.01" value="'+it.price+'" style="width:90px" onchange="storeUpd('+i+',\'price\',this.value)">'+
+      '<select onchange="storeUpd('+i+',\'cond\',this.value)">'+
+        ['NM (perfeita)','SP (levemente usada)','MP (usada)','HP (bem usada)'].map(o=>'<option'+(it.cond===o?' selected':'')+'>'+o+'</option>').join('')+
+      '</select>'+
+      '<button class="btn red sm" onclick="storeRemove('+i+')">✕</button>'+
+      '</div></div>';
+  }).join('') || '<p class="muted">Nenhuma carta à venda ainda — clique numa carta da coleção aqui embaixo.</p>';
+  renderLojaTotals();
+  const inStore=new Set(store.items.map(i=>i.key));
+  $('l-pick').innerHTML = Object.entries(collection)
+    .filter(([id,e])=>!inStore.has(cardKey(e.card)))
+    .map(([id,e])=>'<div class="cardbox" onclick="addToStore(\''+id.replace(/'/g,"\\'")+'\')">'+cardThumbHtml(e.card,'<div class="st" style="color:var(--green)">clique p/ vender</div>')+'</div>')
+    .join('') || '<p class="muted">Todas as cartas da coleção já estão na loja (ou a coleção está vazia).</p>';
+}
+function buildLojaHtml(){
+  const nm=store.name||'Minha Loja de Cartas Pokémon';
+  const w=store.whats? (store.whats.startsWith('55')?store.whats:'55'+store.whats) : '';
+  const items=store.items.map(it=>{
+    const img=cardImg(it.card,'large')||cardImg(it.card);
+    const setTxt=(it.card.set?it.card.set.name:'')+(it.card.number?' · Nº '+it.card.number:'');
+    const msg=encodeURIComponent('Olá! Tenho interesse na carta '+it.card.name+(setTxt?' ('+setTxt+')':'')+' por R$ '+it.price.toFixed(2).replace('.',','));
+    const waBtn = w ? '<a class="wa" href="https://wa.me/'+w+'?text='+msg+'" target="_blank">💬 Quero essa!</a>' : '';
+    return '<div class="item">'+
+      (img?'<img loading="lazy" src="'+img+'" alt="'+esc(it.card.name)+'">':'<div class="ni">'+esc(it.card.name)+'</div>')+
+      '<div class="inm">'+esc(it.card.name)+'</div>'+
+      (setTxt?'<div class="iset">'+esc(setTxt)+'</div>':'')+
+      '<div class="iset">'+esc(it.cond)+(it.qty>1?' · '+it.qty+' disponíveis':'')+'</div>'+
+      '<div class="ipr">R$ '+it.price.toFixed(2).replace('.',',')+'</div>'+waBtn+'</div>';
+  }).join('\n');
+  return '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">'+
+  '<title>'+esc(nm)+'</title><style>'+
+  '*{box-sizing:border-box;margin:0;padding:0}body{background:#0f1220;color:#e8eaf6;font-family:Segoe UI,system-ui,sans-serif}'+
+  'header{background:linear-gradient(135deg,#1a1e33,#2b3160);padding:26px 20px;text-align:center;border-bottom:3px solid #ffcb05}'+
+  'h1{color:#ffcb05;font-size:1.5rem}header p{color:#9aa3c7;font-size:.85rem;margin-top:6px}'+
+  '.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:16px;padding:22px;max-width:1100px;margin:0 auto}'+
+  '.item{background:#1a1e33;border:1px solid #32395f;border-radius:14px;padding:12px;text-align:center;display:flex;flex-direction:column;gap:6px}'+
+  '.item img{width:100%;border-radius:8px}.ni{aspect-ratio:63/88;background:#232847;border-radius:8px;display:flex;align-items:center;justify-content:center;padding:8px}'+
+  '.inm{font-weight:700;margin-top:4px}.iset{color:#9aa3c7;font-size:.75rem}'+
+  '.ipr{color:#4caf50;font-weight:800;font-size:1.25rem;margin:4px 0}'+
+  '.wa{background:#25d366;color:#fff;text-decoration:none;font-weight:700;padding:9px;border-radius:9px;display:block}'+
+  'footer{text-align:center;color:#9aa3c7;font-size:.75rem;padding:20px}'+
+  '</style></head><body>'+
+  '<header><h1>⚡ '+esc(nm)+'</h1><p>'+store.items.reduce((s,i)=>s+i.qty,0)+' carta(s) à venda · atualizado em '+new Date().toLocaleDateString('pt-BR')+'</p></header>'+
+  '<div class="grid">'+items+'</div>'+
+  '<footer>Página gerada pela Central Pokémon TCG</footer></body></html>';
+}
+function downloadLoja(){
+  if(!store.items.length){ toast('Coloque pelo menos 1 carta à venda'); return; }
+  lojaConfigChanged();
+  if(!store.whats) toast('⚠️ Sem WhatsApp configurado — a página sai sem botão de contato');
+  baixarHtml(buildLojaHtml(),'loja.html');
+  toast('⬇️ loja.html gerado — publique no GitHub Pages!');
+}
+function baixarHtml(html,nome){
+  const blob=new Blob([html],{type:'text/html'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download=nome; a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+// ---------- LOJA ONLINE (Supabase) ----------
+LS.cloud='ptcg_cloud';
+const CLOUD_DEFAULT = {
+  url:'https://iirvdizzaynnjhhzzhrv.supabase.co',
+  key:'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlpcnZkaXp6YXlubmpoaHp6aHJ2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUwODc2ODEsImV4cCI6MjEwMDY2MzY4MX0.WNBsLztK8_v3VVzNeBkhnJulUPUilmPaE8UgFJhh6K0',
+  email:'paulocrestan@gmail.com'
+};
+let cloud = load(LS.cloud, {});
+if(!cloud.url) cloud = Object.assign({}, CLOUD_DEFAULT);
+function readCloudCfg(){
+  cloud.url=$('cl-url').value.trim().replace(/\/$/,'');
+  cloud.key=$('cl-key').value.trim();
+  cloud.email=$('cl-email').value.trim();
+  save(LS.cloud, cloud);
+  return $('cl-pass').value;
+}
+async function getSupa(){
+  await loadScript('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2');
+  return window.supabase.createClient(cloud.url, cloud.key);
+}
+async function supaLogin(st){
+  const pass=readCloudCfg();
+  if(!cloud.url||!cloud.key||!cloud.email||!pass){ st.textContent='⚠️ Preencha URL, anon key, e-mail e senha (veja SETUP_LOJA_ONLINE.md).'; return null; }
+  st.innerHTML='<span class="spin"></span> conectando no Supabase...';
+  const supa=await getSupa();
+  const r=await supa.auth.signInWithPassword({email:cloud.email, password:pass});
+  if(r.error){ st.textContent='⚠️ Login falhou: '+r.error.message+' (confira e-mail/senha no painel do Supabase)'; return null; }
+  return supa;
+}
+async function publishLoja(){
+  const st=$('cl-status');
+  try{
+    const supa=await supaLogin(st); if(!supa) return;
+    st.innerHTML='<span class="spin"></span> enviando as cartas...';
+    const rows=store.items.map(it=>({
+      id:cardKey(it.card), nome:it.card.name,
+      colecao:(it.card.set&&it.card.set.name)||'', numero:it.card.number||'',
+      imagem:cardImg(it.card,'large')||cardImg(it.card)||'',
+      preco:it.price, qtd:it.qty, condicao:it.cond||'',
+      atualizado_em:new Date().toISOString()
+    }));
+    if(rows.length){
+      const up=await supa.from('loja_items').upsert(rows);
+      if(up.error) throw new Error(up.error.message);
+    }
+    const all=await supa.from('loja_items').select('id');
+    if(all.error) throw new Error(all.error.message);
+    const keep=new Set(rows.map(r=>r.id));
+    const dead=(all.data||[]).map(x=>x.id).filter(id=>!keep.has(id));
+    if(dead.length){
+      const del=await supa.from('loja_items').delete().in('id',dead);
+      if(del.error) throw new Error(del.error.message);
+    }
+    const cfg=await supa.from('loja_config').upsert({id:1, nome:store.name||'Minha Loja', whats:store.whats||''});
+    if(cfg.error) throw new Error(cfg.error.message);
+    st.innerHTML='✅ Loja online atualizada AO VIVO: <b>'+rows.length+'</b> carta(s) publicada(s)'+(dead.length?', '+dead.length+' removida(s)':'')+'. Quem estiver com a página aberta já vê a mudança.';
+  }catch(e){ st.textContent='⚠️ Erro ao publicar: '+e.message; }
+}
+async function verReservas(){
+  const st=$('cl-status');
+  try{
+    const supa=await supaLogin(st); if(!supa) return;
+    const r=await supa.from('loja_items').select('nome,preco,reservada_por,reservada_em').not('reservada_por','is',null);
+    if(r.error) throw new Error(r.error.message);
+    st.innerHTML = (r.data&&r.data.length)
+      ? '📋 <b>Reservas:</b><br>'+r.data.map(x=>'• <b>'+esc(x.nome)+'</b> ('+brl(Number(x.preco))+') — reservada por <b>'+esc(x.reservada_por)+'</b> em '+esc((x.reservada_em||'').slice(0,10))).join('<br>')
+      : '📋 Nenhuma carta reservada no momento.';
+  }catch(e){ st.textContent='⚠️ Erro: '+e.message; }
+}
+function buildLojaOnlineHtml(){
+  readCloudCfg();
+  const T=[];
+  T.push('<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">');
+  T.push('<title>'+esc(store.name||'Minha Loja Pokémon')+'</title>');
+  T.push('<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"><\/script>');
+  T.push('<style>*{box-sizing:border-box;margin:0;padding:0}body{background:#0f1220;color:#e8eaf6;font-family:Segoe UI,system-ui,sans-serif}');
+  T.push('header{background:linear-gradient(135deg,#1a1e33,#2b3160);padding:22px;text-align:center;border-bottom:3px solid #ffcb05}h1{color:#ffcb05;font-size:1.4rem}header p{color:#9aa3c7;font-size:.8rem;margin-top:5px}');
+  T.push('.box{max-width:360px;margin:40px auto;background:#1a1e33;border:1px solid #32395f;border-radius:14px;padding:22px;display:flex;flex-direction:column;gap:10px}');
+  T.push('input{background:#232847;border:1px solid #32395f;color:#e8eaf6;padding:11px;border-radius:8px;font-size:1rem}');
+  T.push('button{background:#3d7dca;color:#fff;border:none;padding:11px;border-radius:9px;font-weight:700;cursor:pointer;font-size:.95rem}');
+  T.push('.bar{display:flex;justify-content:space-between;align-items:center;max-width:1100px;margin:14px auto 0;padding:0 20px;color:#9aa3c7;font-size:.85rem}.bar button{padding:7px 14px;background:#232847;border:1px solid #32395f}');
+  T.push('.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:16px;padding:22px;max-width:1100px;margin:0 auto}');
+  T.push('.item{background:#1a1e33;border:1px solid #32395f;border-radius:14px;padding:12px;text-align:center;display:flex;flex-direction:column;gap:6px}.item.res{opacity:.65;border-color:#ffa726}');
+  T.push('.item img{width:100%;border-radius:8px}.inm{font-weight:700;margin-top:4px}.iset{color:#9aa3c7;font-size:.75rem}.ipr{color:#4caf50;font-weight:800;font-size:1.25rem;margin:4px 0}');
+  T.push('.wa{background:#25d366;color:#fff;text-decoration:none;font-weight:700;padding:9px;border-radius:9px;display:block}.rs{background:#ffcb05;color:#222}.cx{background:#ef5350}.tag{background:#ffa72622;border:1px solid #ffa726;color:#ffa726;border-radius:8px;padding:5px;font-size:.78rem;font-weight:700}');
+  T.push('#msg{text-align:center;color:#ef9a9a;font-size:.85rem;min-height:18px}footer{text-align:center;color:#9aa3c7;font-size:.72rem;padding:20px}</style></head><body>');
+  T.push('<header><h1 id="t">⚡ '+esc(store.name||'Minha Loja Pokémon')+'</h1><p id="sub">Entre com seu usuário e senha</p></header>');
+  T.push('<div id="login" class="box"><input id="em" type="email" placeholder="Seu e-mail"><input id="pw" type="password" placeholder="Sua senha"><button onclick="entrar()">Entrar na loja</button><div id="msg"></div></div>');
+  T.push('<div id="app" style="display:none"><div class="bar"><span id="quem"></span><button onclick="sair()">Sair</button></div><div class="grid" id="grid"></div></div>');
+  T.push('<footer>🔄 Atualiza sozinha em tempo real · Página da Central Pokémon TCG</footer>');
+  T.push('<script>');
+  T.push('var SUPA_URL="'+cloud.url+'", SUPA_KEY="'+cloud.key+'", ADMIN="'+esc(cloud.email)+'";');
+  T.push('var supa=window.supabase.createClient(SUPA_URL,SUPA_KEY); var ME="", CFG={nome:"",whats:""};');
+  T.push('function $id(x){return document.getElementById(x)}');
+  T.push('function h(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\\"":"&quot;"}[c]})}');
+  T.push('async function init(){var s=await supa.auth.getSession(); if(s.data.session){ME=s.data.session.user.email; entrou();}}');
+  T.push('async function entrar(){$id("msg").textContent="entrando...";var r=await supa.auth.signInWithPassword({email:$id("em").value.trim(),password:$id("pw").value});');
+  T.push('if(r.error){$id("msg").textContent="Usuário ou senha inválidos.";}else{ME=r.data.user.email;entrou();}}');
+  T.push('async function entrou(){$id("login").style.display="none";$id("app").style.display="block";$id("quem").textContent="👤 "+ME;$id("sub").textContent="Cartas à venda — reserve a sua!";');
+  T.push('var c=await supa.from("loja_config").select("*").eq("id",1).maybeSingle(); if(c.data){CFG=c.data; $id("t").textContent="⚡ "+(c.data.nome||"Loja");} await carregar(); realtime();}');
+  T.push('async function carregar(){var r=await supa.from("loja_items").select("*").order("nome"); render(r.data||[]);}');
+  T.push('function render(items){var g=$id("grid"); if(!items.length){g.innerHTML="<p style=\'grid-column:1/-1;text-align:center;color:#9aa3c7\'>Nenhuma carta à venda no momento.</p>";return;}');
+  T.push('g.innerHTML=items.map(function(it){');
+  T.push('var res=!!it.reservada_por, minha=(it.reservada_por===ME), adm=(ME===ADMIN);');
+  T.push('var setTxt=(it.colecao||"")+(it.numero?" · Nº "+it.numero:"");');
+  T.push('var msg=encodeURIComponent("Olá! Tenho interesse na carta "+it.nome+(setTxt?" ("+setTxt+")":"")+" por R$ "+Number(it.preco).toFixed(2).replace(".",","));');
+  T.push('var w=(CFG.whats||"").replace(/\\D/g,""); if(w&&w.indexOf("55")!==0)w="55"+w;');
+  T.push('var btns="";');
+  T.push('if(!res){btns+="<button class=\'rs\' onclick=\'reservar(\\""+it.id+"\\")\'>🔒 Reservar</button>";}');
+  T.push('else{btns+="<div class=\'tag\'>"+(minha?"✅ Reservada por VOCÊ":(adm?"🔒 Reservada: "+h(it.reservada_por):"🔒 Reservada"))+"</div>";');
+  T.push('if(minha||adm){btns+="<button class=\'cx\' onclick=\'cancelar(\\""+it.id+"\\")\'>Cancelar reserva</button>";}}');
+  T.push('if(w){btns+="<a class=\'wa\' target=\'_blank\' href=\'https://wa.me/"+w+"?text="+msg+"\'>💬 Chamar no WhatsApp</a>";}');
+  T.push('return "<div class=\'item"+(res?" res":"")+"\'>"+(it.imagem?"<img loading=\'lazy\' src=\'"+it.imagem+"\'>":"")+"<div class=\'inm\'>"+h(it.nome)+"</div>"+(setTxt?"<div class=\'iset\'>"+h(setTxt)+"</div>":"")+"<div class=\'iset\'>"+h(it.condicao||"")+(it.qtd>1?" · "+it.qtd+" disponíveis":"")+"</div><div class=\'ipr\'>R$ "+Number(it.preco).toFixed(2).replace(".",",")+"</div>"+btns+"</div>";}).join("");}');
+  T.push('async function reservar(id){var r=await supa.rpc("reservar_carta",{item_id:id}); if(r.error||r.data===false){alert("Ops! Alguém reservou primeiro ou houve um erro.");} carregar();}');
+  T.push('async function cancelar(id){await supa.rpc("cancelar_reserva",{item_id:id}); carregar();}');
+  T.push('function realtime(){supa.channel("loja").on("postgres_changes",{event:"*",schema:"public",table:"loja_items"},function(){carregar();}).subscribe();}');
+  T.push('async function sair(){await supa.auth.signOut(); location.reload();}');
+  T.push('init();');
+  T.push('<\/script></body></html>');
+  return T.join('\n');
+}
+function downloadLojaOnline(){
+  readCloudCfg();
+  if(!cloud.url||!cloud.key){ $('cl-status').textContent='⚠️ Preencha a URL e a anon key do Supabase primeiro (SETUP_LOJA_ONLINE.md).'; return; }
+  baixarHtml(buildLojaOnlineHtml(),'loja.html');
+  $('cl-status').innerHTML='⬇️ <b>loja.html</b> (online, com login e reserva) gerado! Suba no seu GitHub Pages — depois disso é só usar 🚀 Publicar pra atualizar os dados, sem mexer na página nunca mais.';
+}
+
+// =====================================================================
+// PRÉ-DECKS OFICIAIS (Theme Decks — repositório pokemon-tcg-data)
+// =====================================================================
+const PD_RAW='https://raw.githubusercontent.com/PokemonTCG/pokemon-tcg-data/master';
+let pdSets=null; const pdDecksCache={}, pdCardsCache={};
+async function loadPredeckIndex(){
+  const st=$('pd-status');
+  st.innerHTML='<span class="spin"></span> baixando lista oficial de pré-decks...';
+  try{
+    const [fr,sr]=await Promise.all([
+      fetchT('https://api.github.com/repos/PokemonTCG/pokemon-tcg-data/contents/decks/en',15000),
+      fetchT(PD_RAW+'/sets/en.json',15000)
+    ]);
+    if(!fr.ok||!sr.ok) throw new Error('resposta '+fr.status+'/'+sr.status);
+    const files=await fr.json(), sets=await sr.json();
+    const sm={}; sets.forEach(s=>sm[s.id]={name:s.name,date:s.releaseDate||''});
+    pdSets=files.map(f=>f.name.replace('.json','')).map(id=>({id, name:(sm[id]&&sm[id].name)||id, date:(sm[id]&&sm[id].date)||''}))
+      .sort((a,b)=>b.date.localeCompare(a.date));
+    $('pd-set').innerHTML=pdSets.map(s=>'<option value="'+s.id+'">'+esc(s.name)+' ('+(s.date||'?').slice(0,4)+')</option>').join('');
+    $('pd-set').style.display=''; $('pd-deck').style.display=''; $('pd-import-btn').style.display='';
+    $('pd-load-btn').style.display='none';
+    st.textContent=pdSets.length+' coleções com pré-decks oficiais. Escolha a coleção e o deck:';
+    pdSetChanged();
+  }catch(e){ st.textContent='⚠️ Falha ao baixar a lista ('+e.message+'). Verifique a internet e tente de novo.'; }
+}
+async function pdSetChanged(){
+  const sid=$('pd-set').value, st=$('pd-status');
+  $('pd-deck').innerHTML='<option>carregando...</option>';
+  try{
+    if(!pdDecksCache[sid]){
+      const r=await fetchT(PD_RAW+'/decks/en/'+sid+'.json',15000);
+      if(!r.ok) throw new Error('resposta '+r.status);
+      pdDecksCache[sid]=await r.json();
+    }
+    $('pd-deck').innerHTML=pdDecksCache[sid].map((d,i)=>'<option value="'+i+'">'+esc(d.name)+' ('+d.cards.reduce((s,c)=>s+c.count,0)+' cartas)</option>').join('');
+  }catch(e){ st.textContent='⚠️ Falha ao carregar os decks dessa coleção: '+e.message; }
+}
+async function importPredeck(){
+  const sid=$('pd-set').value, st=$('pd-status');
+  const def=(pdDecksCache[sid]||[])[parseInt($('pd-deck').value)];
+  if(!def){ toast('Escolha um deck'); return; }
+  st.innerHTML='<span class="spin"></span> baixando as cartas do deck (com imagens e ataques)...';
+  try{
+    const setIds=[...new Set(def.cards.map(c=>c.id.split('-')[0]))];
+    for(const s of setIds){
+      if(!pdCardsCache[s]){
+        const r=await fetchT(PD_RAW+'/cards/en/'+s+'.json',25000);
+        if(!r.ok) throw new Error('cartas de '+s+': resposta '+r.status);
+        pdCardsCache[s]=await r.json();
+      }
+    }
+    const map={}; setIds.forEach(s=>pdCardsCache[s].forEach(c=>map[c.id]=c));
+    const cards=[], missing=[];
+    def.cards.forEach(e=>{ const c=map[e.id]; if(c) cards.push({card:c, qty:e.count}); else missing.push(e.name); });
+    const d={id:uid(), name:def.name+' (oficial)', cards};
+    decks.push(d); save(LS.decks,decks);
+    st.innerHTML='✅ Deck <b>'+esc(def.name)+'</b> importado com '+cards.reduce((s,e)=>s+e.qty,0)+' cartas!'+
+      (missing.length?' ⚠️ Não achei: '+esc(missing.join(', '))+'.':'')+
+      ' Agora é seu: edite abaixo, coloque e tire cartas à vontade.';
+    renderDeckList(); openDeckEditor(d.id);
+  }catch(e){ st.textContent='⚠️ Falha na importação: '+e.message; }
+}
+
+// =====================================================================
+// CÂMERA / FOTO — identificação por OCR (Tesseract.js)
+// =====================================================================
+let camStream=null, camResults=[];
+function loadScript(src){
+  return new Promise((res,rej)=>{
+    if(document.querySelector('script[src="'+src+'"]')) return res();
+    const s=document.createElement('script'); s.src=src; s.onload=res;
+    s.onerror=()=>rej(new Error('falha ao carregar '+src));
+    document.head.appendChild(s);
+  });
+}
+async function openCamModal(){
+  openModal('modal-cam');
+  $('cam-results').innerHTML=''; $('cam-status').textContent='';
+  try{
+    camStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+    const v=$('cam-video'); v.srcObject=camStream; v.style.display='block';
+    $('cam-shot-btn').style.display='';
+  }catch(e){
+    $('cam-video').style.display='none'; $('cam-shot-btn').style.display='none';
+    $('cam-status').innerHTML='ℹ️ Câmera ao vivo indisponível neste navegador/contexto — use o botão <b>📁 Tirar / enviar foto</b> (no celular ele abre a câmera direto).';
+  }
+}
+function closeCamModal(){
+  if(camStream){ camStream.getTracks().forEach(t=>t.stop()); camStream=null; }
+  closeModal('modal-cam');
+}
+function camShot(){
+  const v=$('cam-video');
+  const cv=document.createElement('canvas'); cv.width=v.videoWidth; cv.height=v.videoHeight;
+  cv.getContext('2d').drawImage(v,0,0);
+  identifyFromCanvas(cv);
+}
+function camFileChosen(ev){
+  const f=ev.target.files[0]; if(!f) return;
+  const img=new Image();
+  img.onload=()=>{
+    const scale=Math.min(1, 1400/img.width);
+    const cv=document.createElement('canvas'); cv.width=Math.round(img.width*scale); cv.height=Math.round(img.height*scale);
+    cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
+    identifyFromCanvas(cv);
+  };
+  img.src=URL.createObjectURL(f);
+  ev.target.value='';
+}
+function cropCanvas(cv,x,y,w,h){
+  const c=document.createElement('canvas'); c.width=w; c.height=h;
+  c.getContext('2d').drawImage(cv,x,y,w,h,0,0,w,h);
+  return c;
+}
+async function identifyFromCanvas(cv){
+  const st=$('cam-status');
+  $('cam-results').innerHTML='';
+  st.innerHTML='<span class="spin"></span> Lendo o texto da carta (OCR — a 1ª vez demora um pouco baixando o leitor)...';
+  try{ await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'); }
+  catch(e){ st.textContent='⚠️ Não consegui carregar o leitor OCR (precisa de internet).'; return; }
+  const top    = cropCanvas(cv, 0, 0, cv.width, Math.floor(cv.height*0.22));
+  const bottom = cropCanvas(cv, 0, Math.floor(cv.height*0.80), cv.width, Math.floor(cv.height*0.20));
+  let topText='', botText='';
+  try{
+    const r1=await Tesseract.recognize(top,'eng');    topText=(r1.data&&r1.data.text)||'';
+    const r2=await Tesseract.recognize(bottom,'eng'); botText=(r2.data&&r2.data.text)||'';
+  }catch(e){ st.textContent='⚠️ Erro no OCR: '+e.message; return; }
+  const stop=new Set(['BASIC','STAGE','EVOLVES','FROM','POKEMON','POKÉMON','TRAINER','ENERGY','ITEM','SUPPORTER','THE','AND','PUT','ONTO','WITH','BASICO','BÁSICO','TREINADOR','ENERGIA','EVOLUI','ESTAGIO','ESTÁGIO']);
+  const words=(topText.match(/[A-Za-zÀ-ÿ'-]{3,}/g)||[]).filter(w=>!stop.has(w.toUpperCase()));
+  const name=(words.sort((a,b)=>b.length-a.length)[0]||'').trim();
+  const numMatch=(botText+' '+topText).match(/(\d{1,3})\s*\/\s*\d{1,3}/);
+  const number=numMatch?numMatch[1]:'';
+  if(!name && !number){
+    st.innerHTML='😕 Não consegui ler nada útil. Tente de novo: <b>boa luz</b>, carta reta, preenchendo a foto inteira, sem reflexo no brilho da carta.';
+    return;
+  }
+  st.innerHTML='🔎 Li: '+(name?'nome <b>'+esc(name)+'</b>':'')+(number?' · número <b>'+esc(number)+'</b>':'')+' — buscando na base...';
+  let cards=[];
+  try{
+    if(name && number) cards=(await apiSearchAll(name,number,'')).cards;
+    if(!cards.length && name) cards=(await apiSearchAll(name,'','')).cards;
+    if(!cards.length && number) cards=(await apiSearchAll('',number,'')).cards;
+  }catch(e){ st.textContent='⚠️ Leitura ok ('+name+') mas a busca falhou: '+e.message; return; }
+  if(!cards.length){
+    st.innerHTML='😕 Li "<b>'+esc(name)+'</b>" mas não achei na base — o OCR pode ter errado uma letra. Corrija na busca por nome ali em cima.';
+    return;
+  }
+  camResults=cards;
+  st.innerHTML='✅ '+cards.length+' candidata(s) encontrada(s) — clique na carta certa:';
+  $('cam-results').innerHTML=cards.map((c,i)=>
+    '<div class="cardbox" onclick="closeCamModal();openCardModal(camResults['+i+'])">'+cardThumbHtml(c)+'</div>').join('');
+}
+
+// =====================================================================
+// BACKUP / RESTAURAR
+// =====================================================================
+function backupTudo(){
+  const data={_app:'pokemon-tcg-central', _quando:new Date().toISOString()};
+  Object.values(LS).forEach(k=>{
+    const v=localStorage.getItem(k);
+    if(v!=null){ try{ data[k]=JSON.parse(v); }catch(e){} }
+  });
+  const blob=new Blob([JSON.stringify(data)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='pokemon_tcg_backup_'+new Date().toISOString().slice(0,10)+'.json';
+  a.click(); URL.revokeObjectURL(a.href);
+  toast('⬇️ Backup baixado — guarde o arquivo!');
+}
+function restaurarTudo(ev){
+  const f=ev.target.files[0]; if(!f) return;
+  const rd=new FileReader();
+  rd.onload=()=>{
+    try{
+      const data=JSON.parse(rd.result);
+      if(data._app!=='pokemon-tcg-central'){ toast('⚠️ Esse arquivo não parece um backup deste app'); return; }
+      if(!confirm('Restaurar backup de '+(data._quando||'?').slice(0,10)+'? Os dados atuais deste aparelho serão substituídos.')) return;
+      Object.values(LS).forEach(k=>{ if(data[k]!=null) localStorage.setItem(k, JSON.stringify(data[k])); });
+      location.reload();
+    }catch(e){ toast('⚠️ Arquivo inválido: '+e.message); }
+  };
+  rd.readAsText(f);
+  ev.target.value='';
+}
+
+// ---------- init ----------
+fillTypeSelects();
+manualSuperChange();
+renderCollection();
+renderDeckList();
+getRates();
+</script>
+</body>
+</html>
