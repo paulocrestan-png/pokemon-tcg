@@ -149,6 +149,7 @@
   <div class="card-panel">
     <h2>🎯 Checklist de Coleções Oficiais</h2>
     <p class="muted" style="margin-bottom:10px">Escolha a coleção que você está colecionando (ex.: <i>Fogo Fantasmagórico</i>), veja TODAS as cartas dela em ordem e clique nas que você tem. Nomes e raridades em português!</p>
+    <div id="ck-mylist" style="margin-bottom:10px"></div>
     <div class="row">
       <button class="btn" id="ck-load-btn" onclick="loadSetsIndex()">📥 Carregar coleções</button>
       <input id="ck-filter" placeholder="filtrar (ex.: fantasmag...)" style="display:none; min-width:170px" oninput="fillSetSelect()">
@@ -163,6 +164,7 @@
         <button class="btn sm ghost" id="ckm-have" onclick="ckFilterMode('have')">Tenho</button>
       </div>
       <div class="hpbar" style="height:12px"><div id="ck-bar" style="width:0%"></div></div>
+      <div id="ck-value" class="muted" style="margin-top:8px"></div>
       <div id="ck-rarities" style="margin-top:10px"></div>
       <div class="grid" id="ck-grid"></div>
     </div>
@@ -490,7 +492,7 @@ document.querySelectorAll('nav button').forEach(b=>{
     document.querySelectorAll('section.tab').forEach(x=>x.classList.remove('active'));
     b.classList.add('active');
     $('tab-'+b.dataset.tab).classList.add('active');
-    if(b.dataset.tab==='colecao') renderCollection();
+    if(b.dataset.tab==='colecao'){ renderCollection(); renderMyList(); }
     if(b.dataset.tab==='decks') renderDeckList();
     if(b.dataset.tab==='loja') renderLoja();
     if(b.dataset.tab==='batalha') initBattleTab();
@@ -1745,6 +1747,45 @@ async function identifyFromCanvas(cv){
 LS.checks='ptcg_checks';
 let checks = load(LS.checks, {});   // setId -> {cardId:true}
 let setsIndex=null, ckCards=[], ckSetId=null, ckMode='all', ckRarity=null;
+const CK_CACHE='ptcg_setcards2_';   // v2: agora com preços
+// limpa caches da versão antiga (sem preço)
+try{ Object.keys(localStorage).filter(k=>k.indexOf('ptcg_setcards_')===0).forEach(k=>localStorage.removeItem(k)); }catch(e){}
+function tcgdexBestPrice(d){
+  let usd=null, eur=null;
+  ((d&&d.variants_detailed)||[]).forEach(v=>{
+    const p=v.pricing||{};
+    if(p.tcgplayer){ for(const k in p.tcgplayer){ const o=p.tcgplayer[k]; if(o&&typeof o==='object'&&o.marketPrice!=null){ if(usd==null||o.marketPrice>usd) usd=o.marketPrice; } } }
+    if(p.cardmarket&&p.cardmarket.trend!=null){ if(eur==null||p.cardmarket.trend>eur) eur=p.cardmarket.trend; }
+  });
+  return {usd,eur};
+}
+function cardBrlPrice(c, R){
+  if(c.usd!=null && R && R.usd) return c.usd*R.usd;
+  if(c.eur!=null && R && R.eur) return c.eur*R.eur;
+  return null;
+}
+function renderMyList(){
+  const el=$('ck-mylist'); if(!el) return;
+  const entries=Object.keys(checks).map(sid=>{
+    const n=Object.keys(checks[sid]||{}).length;
+    if(!n) return null;
+    const cache=load(CK_CACHE+sid,null);
+    const meta=setsIndex? setsIndex.find(s=>s.id===sid) : null;
+    const total=cache? cache.cards.length : ((meta&&meta.cardCount&&meta.cardCount.total)||null);
+    const name=cache? cache.name : ((meta&&meta.name)||sid);
+    const pct=total? Math.round(n/total*100) : 0;
+    return {sid,n,total:(total||'?'),name,pct};
+  }).filter(Boolean).sort((a,b)=>b.pct-a.pct);
+  el.innerHTML = entries.length
+    ? '<h3 style="margin-top:0">📌 Minhas coleções em andamento (clique pra abrir)</h3>'+entries.map(e=>{
+        const done=(e.pct>=100);
+        return '<div class="deck-list-item" style="cursor:pointer" onclick="loadSetIntoChecklist(\''+e.sid+'\')">'+
+          '<div>'+(done?'🏆 ':'')+'<b>'+esc(e.name)+'</b></div>'+
+          '<div class="row"><span class="pill">'+e.n+' de '+e.total+'</span>'+
+          '<span class="pill" style="color:'+(done?'var(--green)':'var(--accent)')+';font-weight:700">'+e.pct+'%</span></div></div>';
+      }).join('')
+    : '';
+}
 
 async function loadSetsIndex(){
   const st=$('ck-status');
@@ -1771,11 +1812,14 @@ function fillSetSelect(){
   $('ck-set').innerHTML='<option value="">— escolha a coleção —</option>'+
     opts.map(s=>'<option value="'+s.id+'">'+esc(s.name)+' ('+((s.cardCount&&s.cardCount.total)||'?')+' cartas)</option>').join('');
 }
-async function openSetChecklist(){
+function openSetChecklist(){
   const sid=$('ck-set').value; if(!sid) return;
+  loadSetIntoChecklist(sid);
+}
+async function loadSetIntoChecklist(sid){
   ckSetId=sid;
   const st=$('ck-status');
-  let cached=load('ptcg_setcards_'+sid, null);
+  let cached=load(CK_CACHE+sid, null);
   if(!cached){
     try{
       st.innerHTML='<span class="spin"></span> baixando as cartas da coleção...';
@@ -1794,19 +1838,22 @@ async function openSetChecklist(){
         ));
         ds.forEach((d,j)=>{
           const b=chunk[j];
-          cards.push({id:b.id, n:b.localId, name:(d&&d.name)||b.name, img:b.image?b.image+'/low.webp':null, rar:(d&&d.rarity)||'—'});
+          const pr=tcgdexBestPrice(d);
+          cards.push({id:b.id, n:b.localId, name:(d&&d.name)||b.name, img:b.image?b.image+'/low.webp':null, rar:(d&&d.rarity)||'—', usd:pr.usd, eur:pr.eur});
         });
-        st.innerHTML='<span class="spin"></span> carregando raridades... '+cards.length+'/'+briefs.length;
+        st.innerHTML='<span class="spin"></span> carregando raridades e preços... '+cards.length+'/'+briefs.length;
       }
       cached={name:det.name, cards};
-      try{ save('ptcg_setcards_'+sid, cached); }catch(e){ /* quota cheia: segue sem cache */ }
+      try{ save(CK_CACHE+sid, cached); }catch(e){ /* quota cheia: segue sem cache */ }
     }catch(e){ st.textContent='⚠️ Erro ao carregar a coleção: '+e.message; return; }
   }
   ckCards=cached.cards;
   st.textContent='📦 '+cached.name+' — clique nas cartas que você TEM:';
   $('ck-panel').style.display='block';
   ckMode='all'; ckRarity=null;
+  ['all','miss','have'].forEach(x=>$('ckm-'+x).classList.toggle('on', x==='all'));
   renderChecklist();
+  $('ck-panel').scrollIntoView({behavior:'smooth'});
 }
 function ckHave(){ if(!checks[ckSetId]) checks[ckSetId]={}; return checks[ckSetId]; }
 function toggleCk(cid){
@@ -1837,6 +1884,20 @@ function renderChecklist(){
   bar.style.width=pct+'%';
   bar.className = pct>=100 ? '' : (pct>=50 ? 'mid' : 'low');
   if(pct>=100) bar.style.background='var(--green)';
+  // valor estimado (tenho / faltando / completa)
+  const R=rates;
+  let vHave=0, vMiss=0, semPreco=0;
+  ckCards.forEach(c=>{
+    const b=cardBrlPrice(c,R);
+    if(b==null){ semPreco++; return; }
+    if(have[c.id]) vHave+=b; else vMiss+=b;
+  });
+  if(R && (R.usd||R.eur)){
+    $('ck-value').innerHTML='💰 Valor estimado — tenho: <b class="price-brl">'+brl(vHave)+'</b> · faltando: <b style="color:var(--orange)">'+brl(vMiss)+'</b> · coleção completa: <b>'+brl(vHave+vMiss)+'</b>'+(semPreco?' <span class="muted">('+semPreco+' carta(s) sem cotação)</span>':'');
+  } else {
+    $('ck-value').textContent='';
+    if(!renderChecklist._triedRates){ renderChecklist._triedRates=true; getRates().then(()=>renderChecklist()); }
+  }
   // raridades
   const rars={};
   ckCards.forEach(c=>{ const r=c.rar||'—'; if(!rars[r]) rars[r]={t:0,h:0}; rars[r].t++; if(have[c.id]) rars[r].h++; });
@@ -1850,11 +1911,15 @@ function renderChecklist(){
   if(ckRarity) list=list.filter(c=>(c.rar||'—')===ckRarity);
   $('ck-grid').innerHTML=list.map(c=>{
     const has=!!have[c.id];
+    const b=cardBrlPrice(c,R);
     return '<div class="cardbox '+(has?'ck-yes':'ck-no')+'" onclick="toggleCk(\''+c.id+'\')">'+
       (c.img?'<img loading="lazy" src="'+c.img+'">':'<div class="noimg"><span>'+esc(c.name)+'</span></div>')+
       (has?'<div class="ck-badge">✔</div>':'')+
-      '<div class="nm">'+esc(c.name)+'</div><div class="st">Nº '+esc(c.n)+' · '+esc(c.rar)+'</div></div>';
+      '<div class="nm">'+esc(c.name)+'</div><div class="st">Nº '+esc(c.n)+' · '+esc(c.rar)+'</div>'+
+      (b!=null?'<div class="st" style="color:var(--green);font-weight:700">'+brl(b)+'</div>':'')+
+      '</div>';
   }).join('') || '<p class="muted">nenhuma carta neste filtro</p>';
+  renderMyList();
 }
 
 // =====================================================================
