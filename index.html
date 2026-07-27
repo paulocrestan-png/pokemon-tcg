@@ -189,12 +189,11 @@
 <section class="tab" id="tab-decks">
   <div class="card-panel">
     <h2>📦 Pré-Decks Oficiais (Theme Decks)</h2>
-    <p class="muted" style="margin-bottom:10px">Importe um deck oficial pronto da Pokémon (Base Set até a era Sword & Shield). Depois de importar, ele vira SEU deck: edite à vontade, coloque e tire cartas.</p>
+    <p class="muted" style="margin-bottom:10px">Todos os <b>188 decks oficiais prontos</b> da Pokémon (Base Set 1999 até a era XY/Sun&Moon — depois disso a Pokémon parou de lançar Theme Decks). Pesquise por nome do deck ou da coleção, importe e edite à vontade: vira SEU deck.</p>
     <div class="row">
-      <button class="btn" id="pd-load-btn" onclick="loadPredeckIndex()">📥 Carregar lista de pré-decks</button>
-      <input id="pd-filter" placeholder="🔍 pesquisar coleção..." style="display:none; min-width:170px" oninput="pdFillSetSelect()">
-      <select id="pd-set" onchange="pdSetChanged()" style="display:none; max-width:230px"></select>
-      <select id="pd-deck" style="display:none; max-width:230px"></select>
+      <button class="btn" id="pd-load-btn" onclick="loadPredeckIndex()">📥 Carregar TODOS os pré-decks</button>
+      <input id="pd-filter" placeholder="🔍 pesquisar deck ou coleção..." style="display:none; flex:1; min-width:190px" oninput="pdFillDeckSelect()">
+      <select id="pd-deck" style="display:none; max-width:320px"></select>
       <button class="btn gold" id="pd-import-btn" onclick="importPredeck()" style="display:none">⬇️ Importar</button>
     </div>
     <div id="pd-status" class="muted" style="margin-top:8px"></div>
@@ -1598,10 +1597,12 @@ function downloadLojaOnline(){
 // PRÉ-DECKS OFICIAIS (Theme Decks — repositório pokemon-tcg-data)
 // =====================================================================
 const PD_RAW='https://raw.githubusercontent.com/PokemonTCG/pokemon-tcg-data/master';
-let pdSets=null; const pdDecksCache={}, pdCardsCache={};
+let pdAllDecks=null; const pdDecksCache={}, pdCardsCache={};
 async function loadPredeckIndex(){
   const st=$('pd-status');
-  st.innerHTML='<span class="spin"></span> baixando lista oficial de pré-decks...';
+  const cached=load('ptcg_predecks_idx', null);
+  if(cached && Date.now()-cached.at < 7*86400000){ pdAllDecks=cached.decks; pdShowUI(); return; }
+  st.innerHTML='<span class="spin"></span> baixando o catálogo completo de pré-decks...';
   try{
     const [fr,sr]=await Promise.all([
       fetchT('https://api.github.com/repos/PokemonTCG/pokemon-tcg-data/contents/decks/en',15000),
@@ -1610,38 +1611,52 @@ async function loadPredeckIndex(){
     if(!fr.ok||!sr.ok) throw new Error('resposta '+fr.status+'/'+sr.status);
     const files=await fr.json(), sets=await sr.json();
     const sm={}; sets.forEach(s=>sm[s.id]={name:s.name,date:s.releaseDate||''});
-    pdSets=files.map(f=>f.name.replace('.json','')).map(id=>({id, name:(sm[id]&&sm[id].name)||id, date:(sm[id]&&sm[id].date)||''}))
-      .sort((a,b)=>b.date.localeCompare(a.date));
-    $('pd-filter').style.display=''; $('pd-set').style.display=''; $('pd-deck').style.display=''; $('pd-import-btn').style.display='';
-    $('pd-load-btn').style.display='none';
-    st.textContent=pdSets.length+' coleções com pré-decks oficiais. Pesquise, escolha a coleção e o deck:';
-    pdFillSetSelect();
-  }catch(e){ st.textContent='⚠️ Falha ao baixar a lista ('+e.message+'). Verifique a internet e tente de novo.'; }
-}
-function pdFillSetSelect(){
-  if(!pdSets) return;
-  const f=($('pd-filter').value||'').toLowerCase();
-  const opts=pdSets.filter(s=>(s.name||'').toLowerCase().includes(f)||(s.id||'').toLowerCase().includes(f));
-  $('pd-set').innerHTML=opts.map(s=>'<option value="'+s.id+'">'+esc(s.name)+' ('+(s.date||'?').slice(0,4)+')</option>').join('') || '<option value="">— nada encontrado —</option>';
-  pdSetChanged();
-}
-async function pdSetChanged(){
-  if(!$('pd-set').value){ $('pd-deck').innerHTML=''; return; }
-  const sid=$('pd-set').value, st=$('pd-status');
-  $('pd-deck').innerHTML='<option>carregando...</option>';
-  try{
-    if(!pdDecksCache[sid]){
-      const r=await fetchT(PD_RAW+'/decks/en/'+sid+'.json',15000);
-      if(!r.ok) throw new Error('resposta '+r.status);
-      pdDecksCache[sid]=await r.json();
+    const infos=files.map(f=>f.name.replace('.json','')).map(id=>({id, name:(sm[id]&&sm[id].name)||id, date:(sm[id]&&sm[id].date)||''}));
+    const decks=[];
+    for(let i=0;i<infos.length;i+=15){
+      const chunk=infos.slice(i,i+15);
+      const ds=await Promise.all(chunk.map(s=>
+        fetchT(PD_RAW+'/decks/en/'+s.id+'.json',20000).then(r=>r.ok?r.json():[]).catch(()=>[])
+      ));
+      ds.forEach((arr,j)=>{
+        const s=chunk[j];
+        (arr||[]).forEach((d,di)=>decks.push({sid:s.id, sname:s.name, date:s.date, di, name:d.name, n:d.cards.reduce((t,c)=>t+c.count,0)}));
+      });
+      st.innerHTML='<span class="spin"></span> baixando pré-decks... '+decks.length+' encontrados ('+Math.min(i+15,infos.length)+'/'+infos.length+' coleções)';
     }
-    $('pd-deck').innerHTML=pdDecksCache[sid].map((d,i)=>'<option value="'+i+'">'+esc(d.name)+' ('+d.cards.reduce((s,c)=>s+c.count,0)+' cartas)</option>').join('');
-  }catch(e){ st.textContent='⚠️ Falha ao carregar os decks dessa coleção: '+e.message; }
+    pdAllDecks=decks.sort((a,b)=>(b.date||'').localeCompare(a.date||'')||a.name.localeCompare(b.name));
+    try{ save('ptcg_predecks_idx', {at:Date.now(), decks:pdAllDecks}); }catch(e){}
+    pdShowUI();
+  }catch(e){ st.textContent='⚠️ Falha ao baixar o catálogo ('+e.message+'). Verifique a internet e tente de novo.'; }
+}
+function pdShowUI(){
+  $('pd-filter').style.display=''; $('pd-deck').style.display=''; $('pd-import-btn').style.display='';
+  $('pd-load-btn').style.display='none';
+  $('pd-status').textContent=pdAllDecks.length+' pré-decks oficiais no catálogo — pesquise e escolha:';
+  pdFillDeckSelect();
+}
+function pdFillDeckSelect(){
+  if(!pdAllDecks) return;
+  const f=($('pd-filter').value||'').toLowerCase();
+  const opts=pdAllDecks.filter(d=>
+    (d.name||'').toLowerCase().includes(f) || (d.sname||'').toLowerCase().includes(f) || (d.sid||'').toLowerCase().includes(f));
+  $('pd-deck').innerHTML=opts.slice(0,400).map(d=>
+    '<option value="'+d.sid+'|'+d.di+'">'+esc(d.name)+' — '+esc(d.sname)+' ('+(d.date||'?').slice(0,4)+') · '+d.n+' cartas</option>').join('')
+    || '<option value="">— nada encontrado —</option>';
 }
 async function importPredeck(){
-  const sid=$('pd-set').value, st=$('pd-status');
-  const def=(pdDecksCache[sid]||[])[parseInt($('pd-deck').value)];
-  if(!def){ toast('Escolha um deck'); return; }
+  const st=$('pd-status');
+  const val=$('pd-deck').value;
+  if(!val){ toast('Escolha um deck'); return; }
+  const sid=val.split('|')[0], di=parseInt(val.split('|')[1]);
+  if(!pdDecksCache[sid]){
+    st.innerHTML='<span class="spin"></span> baixando o deck...';
+    const r=await fetchT(PD_RAW+'/decks/en/'+sid+'.json',20000);
+    if(!r.ok){ st.textContent='⚠️ Falha ao baixar o deck: resposta '+r.status; return; }
+    pdDecksCache[sid]=await r.json();
+  }
+  const def=(pdDecksCache[sid]||[])[di];
+  if(!def){ toast('Deck não encontrado'); return; }
   st.innerHTML='<span class="spin"></span> baixando as cartas do deck (com imagens e ataques)...';
   try{
     const setIds=[...new Set(def.cards.map(c=>c.id.split('-')[0]))];
