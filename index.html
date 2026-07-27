@@ -196,6 +196,12 @@
       <select id="pd-deck" style="display:none; max-width:320px"></select>
       <button class="btn gold" id="pd-import-btn" onclick="importPredeck()" style="display:none">⬇️ Importar</button>
     </div>
+    <h3>⚡ League Battle Decks modernos (já embutidos no app)</h3>
+    <div class="row">
+      <button class="btn sm" onclick="importModern(0)">🔥 Charizard ex</button>
+      <button class="btn sm" onclick="importModern(1)">🔮 Gardevoir ex</button>
+      <button class="btn sm" onclick="importModern(2)">⚡ Miraidon ex + Raikou V</button>
+    </div>
     <div id="pd-status" class="muted" style="margin-top:8px"></div>
   </div>
 
@@ -1596,6 +1602,40 @@ function downloadLojaOnline(){
 // =====================================================================
 // PRÉ-DECKS OFICIAIS (Theme Decks — repositório pokemon-tcg-data)
 // =====================================================================
+// ---- League Battle Decks modernos (listas oficiais verificadas, IDs TCGdex validados)
+const MODERN_DECKS=[
+ {name:'Charizard ex — League Battle Deck', cards:[['sv04.5-007',4],['sv04.5-008',3],['sv03-125',3],['sv03.5-016',3],['sv03.5-017',2],['sv03-164',2],['sv03.5-146',3],['sv02-185',4],['sv01-166',2],['sv02-171',2],['sv05-144',4],['sv01-191',4],['sv01-196',4],['sv05-157',1],['sv02-188',1],['sv01-194',1],['sv02-172',2],['sv01-189',2],['sv04-178',2],['sv01-169',1],['sve-002',10]]},
+ {name:'Gardevoir ex — League Battle Deck', cards:[['sv01-086',3],['swsh12-068',4],['swsh12-067',4],['sv01-089',3],['swsh11-074',1],['swsh9-040',1],['sv03.5-151',1],['swsh10-046',1],['sv02-185',4],['sv01-189',3],['sv01-166',2],['sv02-172',2],['sv01-175',1],['sv02-171',2],['sv01-181',4],['sv01-196',4],['sv01-191',3],['sv02-188',1],['sv02-173',3],['sve-005',13]]},
+ {name:'Miraidon ex — League Battle Deck', cards:[['sv01-081',2],['swsh12-058',2],['swsh12-057',2],['swsh10-051',2],['swsh12-056',2],['swsh9-121',2],['swsh9-120',2],['sv01-166',4],['sv02-172',4],['sv01-190',4],['sv01-170',4],['sv01-181',3],['sv01-194',2],['sv01-196',4],['swsh12-156',1],['swsh12-160',1],['sv01-197',2],['sv01-167',2],['sve-004',15]], extra:[['swsh9-048',2]]},
+];
+async function importModern(i){
+  const def=MODERN_DECKS[i], st=$('pd-status');
+  st.innerHTML='<span class="spin"></span> baixando '+esc(def.name)+'...';
+  try{
+    const pares=def.cards.concat(def.extra||[]);
+    const uniq=[...new Set(pares.map(x=>x[0]))];
+    const map={};
+    for(let k=0;k<uniq.length;k+=15){
+      const chunk=uniq.slice(k,k+15);
+      const ds=await Promise.all(chunk.map(id=>
+        fetchT('https://api.tcgdex.net/v2/pt/cards/'+id,15000).then(r=>r.ok?r.json():null).catch(()=>null)
+          .then(d=> d || fetchT('https://api.tcgdex.net/v2/en/cards/'+id,15000).then(r=>r.ok?r.json():null).catch(()=>null))
+      ));
+      ds.forEach((d,j)=>{ if(d) map[chunk[j]]=normTcgdex(d); });
+      st.innerHTML='<span class="spin"></span> baixando cartas... '+Object.keys(map).length+'/'+uniq.length;
+    }
+    const cards=[], missing=[];
+    pares.forEach(p=>{ if(map[p[0]]) cards.push({card:map[p[0]], qty:p[1]}); else missing.push(p[0]); });
+    const d={id:uid(), name:def.name, cards};
+    decks.push(d); save(LS.decks,decks);
+    const n=cards.reduce((s,e)=>s+e.qty,0);
+    st.innerHTML='✅ <b>'+esc(def.name)+'</b> importado com '+n+' cartas!'+
+      (def.extra?' (inclui os 2 Raikou V extras — remova 2 cartas se quiser fechar em 60 igual seu deck físico)':'')+
+      (missing.length?' ⚠️ faltou: '+missing.join(', '):'')+' Edite abaixo.';
+    renderDeckList(); openDeckEditor(d.id);
+  }catch(e){ st.textContent='⚠️ Erro ao importar: '+e.message; }
+}
+
 const PD_RAW='https://raw.githubusercontent.com/PokemonTCG/pokemon-tcg-data/master';
 let pdAllDecks=null; const pdDecksCache={}, pdCardsCache={};
 async function loadPredeckIndex(){
