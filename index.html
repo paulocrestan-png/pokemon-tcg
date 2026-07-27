@@ -162,6 +162,8 @@
         <button class="btn sm ghost on" id="ckm-all" onclick="ckFilterMode('all')">Todas</button>
         <button class="btn sm ghost" id="ckm-miss" onclick="ckFilterMode('miss')">Faltando</button>
         <button class="btn sm ghost" id="ckm-have" onclick="ckFilterMode('have')">Tenho</button>
+        <button class="btn sm" onclick="copyCkList('have')">📋 Copiar tenho</button>
+        <button class="btn sm ghost" onclick="copyCkList('miss')">📋 Copiar faltando</button>
       </div>
       <div class="hpbar" style="height:12px"><div id="ck-bar" style="width:0%"></div></div>
       <div id="ck-value" class="muted" style="margin-top:8px"></div>
@@ -175,6 +177,8 @@
       <input id="c-filter" placeholder="Filtrar por nome..." oninput="renderCollection()" style="flex:1; min-width:160px">
       <div class="ai-stat">Cartas: <b id="c-total">0</b></div>
       <div class="ai-stat">Valor estimado: <b id="c-value">—</b></div>
+      <button class="btn sm" onclick="copyCollectionList()">📋 Copiar lista</button>
+      <button class="btn sm ghost" onclick="downloadCollectionCsv()">⬇️ .csv</button>
     </div>
     <div class="grid" id="c-grid"></div>
   </div>
@@ -1928,6 +1932,78 @@ function renderChecklist(){
       '</div>';
   }).join('') || '<p class="muted">nenhuma carta neste filtro</p>';
   renderMyList();
+}
+
+// =====================================================================
+// EXPORTAR LISTAS (copiar e colar)
+// =====================================================================
+async function copyText(txt, okMsg){
+  try{
+    await navigator.clipboard.writeText(txt);
+    toast(okMsg||'📋 Copiado! É só colar.');
+  }catch(e){
+    const ta=document.createElement('textarea');
+    ta.value=txt; document.body.appendChild(ta); ta.select();
+    try{ document.execCommand('copy'); toast(okMsg||'📋 Copiado! É só colar.'); }
+    catch(e2){ toast('⚠️ Não consegui copiar automaticamente'); }
+    document.body.removeChild(ta);
+  }
+}
+function collectionLines(){
+  const R=rates;
+  const entries=Object.values(collection).sort((a,b)=>a.card.name.localeCompare(b.card.name));
+  let total=0, valor=0;
+  const lines=entries.map(e=>{
+    total+=e.qty;
+    const b=getCardBRL(e.card,R);
+    if(b!=null) valor+=b*e.qty;
+    const setTxt=(e.card.set?e.card.set.name:'')+(e.card.number?' Nº '+e.card.number:'');
+    return e.qty+'x '+e.card.name+(setTxt?' — '+setTxt:'')+(e.card.rarity?' — '+e.card.rarity:'')+(b!=null?' — '+brl(b)+(e.qty>1?' (cada)':''):'');
+  });
+  return {lines, total, valor};
+}
+function copyCollectionList(){
+  const {lines,total,valor}=collectionLines();
+  if(!lines.length){ toast('Coleção vazia'); return; }
+  const txt='📚 MINHA COLEÇÃO POKÉMON TCG — '+new Date().toLocaleDateString('pt-BR')+'\n'+
+    'Total: '+total+' carta(s)'+(valor?' · Valor estimado: '+brl(valor):'')+'\n\n'+
+    lines.join('\n');
+  copyText(txt);
+}
+function downloadCollectionCsv(){
+  const R=rates;
+  const entries=Object.values(collection).sort((a,b)=>a.card.name.localeCompare(b.card.name));
+  if(!entries.length){ toast('Coleção vazia'); return; }
+  const rows=[['Qtd','Carta','Colecao','Numero','Raridade','Preco_R$']];
+  entries.forEach(e=>{
+    const b=getCardBRL(e.card,R);
+    rows.push([e.qty, e.card.name, e.card.set?e.card.set.name:'', e.card.number||'', e.card.rarity||'', b!=null?b.toFixed(2).replace('.',','):'']);
+  });
+  const csv=rows.map(r=>r.map(x=>'"'+String(x).replace(/"/g,'""')+'"').join(';')).join('\r\n');
+  const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download='minha_colecao_pokemon.csv'; a.click();
+  URL.revokeObjectURL(a.href);
+  toast('⬇️ CSV baixado (abre no Excel/Planilhas)');
+}
+function copyCkList(modo){
+  if(!ckCards.length){ toast('Abra uma coleção primeiro'); return; }
+  const have=ckHave(), R=rates;
+  const setName=($('ck-status').textContent||'').replace('📦 ','').split(' — ')[0]||ckSetId;
+  const nHave=ckCards.filter(c=>have[c.id]).length;
+  const list=ckCards.filter(c=> modo==='have' ? have[c.id] : !have[c.id]);
+  if(!list.length){ toast(modo==='have'?'Nenhuma carta marcada ainda':'Não falta nada — coleção completa! 🏆'); return; }
+  let valor=0;
+  const lines=list.map(c=>{
+    const b=cardBrlPrice(c,R);
+    if(b!=null) valor+=b;
+    return 'Nº '+c.n+' · '+c.name+' · '+c.rar+(b!=null?' · '+brl(b):'');
+  });
+  const txt='🎯 '+setName.toUpperCase()+' — '+(modo==='have'?'CARTAS QUE TENHO':'CARTAS QUE FALTAM')+'\n'+
+    'Progresso: '+nHave+' de '+ckCards.length+' ('+Math.round(nHave/ckCards.length*100)+'%)'+
+    (valor?' · Valor desta lista: '+brl(valor):'')+'\n\n'+
+    lines.join('\n');
+  copyText(txt, modo==='have'?'📋 Lista "tenho" copiada!':'📋 Lista "faltando" copiada!');
 }
 
 // =====================================================================
