@@ -288,6 +288,13 @@
       Você só espelha na mesa (pegue as cartas do deck da IA no portadeck, sem ordem — o app controla tudo).
     </div>
     <div class="row" style="margin-bottom:10px">
+      <label>Modo:&nbsp;
+        <select id="b-mode" onchange="battleModeChanged()">
+          <option value="fisico">⚔️ Físico (cartas na mesa)</option>
+          <option value="treino">🎮 Treinamento digital (tudo na tela)</option>
+        </select>
+      </label>
+      <label id="b-mydeck-wrap" style="display:none">Meu deck:&nbsp;<select id="b-mydeck"></select></label>
       <label>Deck da IA:&nbsp;<select id="b-aideck"></select></label>
       <label>Quem começa:&nbsp;
         <select id="b-first">
@@ -321,6 +328,25 @@
       <div class="row" style="margin-top:12px">
         <button class="btn gold" id="b-aiturn-btn" onclick="aiExecuteTurn()">🤖 Executar turno da IA</button>
         <button class="btn red sm" onclick="confirmEndBattle()">Encerrar batalha</button>
+      </div>
+    </div>
+
+    <div class="battle-zone" id="b-pl-zone" style="display:none">
+      <h3 style="margin-top:0">🧑 Meu lado (clique nas cartas pra jogar)</h3>
+      <div class="ai-stats">
+        <div class="ai-stat">🃏 Deck: <b id="b-pl-deck">0</b></div>
+        <div class="ai-stat">🏆 Meus prêmios: <b id="b-pl-prizes">6</b></div>
+        <div class="ai-stat">🗑️ Descarte: <b id="b-pl-discard">0</b></div>
+      </div>
+      <div class="board" id="b-pl-board"></div>
+      <h3>✋ Minha mão (<span id="b-pl-handn">0</span>)</h3>
+      <div class="board" id="b-pl-hand"></div>
+      <div id="b-pl-menu" style="margin-top:10px"></div>
+      <div class="row" style="margin-top:10px">
+        <button class="btn gold" id="b-pl-start" onclick="plStartTurn()">▶ Comprar e jogar meu turno</button>
+        <button class="btn green" id="b-pl-end" onclick="plEndTurn(false)" style="display:none">✅ Encerrar meu turno (sem atacar)</button>
+        <button class="btn sm" onclick="plCoach()">💡 Dica do treinador</button>
+        <button class="btn ghost sm" onclick="plDraw1()">🛠 Comprar 1 (efeito manual)</button>
       </div>
     </div>
 
@@ -948,9 +974,15 @@ $('d-search').addEventListener('keydown',e=>{ if(e.key==='Enter') deckSearch(); 
 // BATALHA vs IA
 // =====================================================================
 function initBattleTab(){
-  $('b-aideck').innerHTML = decks.map(d=>'<option value="'+d.id+'">'+esc(d.name)+' ('+deckCount(d)+' cartas)</option>').join('') || '<option value="">— crie um deck primeiro —</option>';
+  const opts = decks.map(d=>'<option value="'+d.id+'">'+esc(d.name)+' ('+deckCount(d)+' cartas)</option>').join('') || '<option value="">— crie um deck primeiro —</option>';
+  $('b-aideck').innerHTML=opts;
+  $('b-mydeck').innerHTML=opts;
+  battleModeChanged();
   if(battle && battle.on){ $('b-setup').style.display='none'; $('b-arena').style.display='block'; renderBattle(); }
   else { $('b-setup').style.display='block'; $('b-arena').style.display='none'; }
+}
+function battleModeChanged(){
+  $('b-mydeck-wrap').style.display = $('b-mode').value==='treino' ? '' : 'none';
 }
 function expandDeck(d){
   const arr=[];
@@ -958,7 +990,7 @@ function expandDeck(d){
   return arr;
 }
 function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
-function mkSlot(card){ return {card, damage:0, energies:[], playedTurn:battle?battle.turnCount:0, evolvedTurn:-1}; }
+function mkSlot(card){ return {card, damage:0, energies:[], playedTurn:battle?(battle.roundNo||0):0, evolvedTurn:-1}; }
 function saveBattle(){ save(LS.battle, battle); }
 
 function startBattle(){
@@ -968,9 +1000,18 @@ function startBattle(){
   const cards=expandDeck(d);
   if(cards.length<20){ toast('Deck da IA muito pequeno ('+cards.length+' cartas). Ideal: 60.'); if(cards.length<7) return; }
   if(!cards.some(isBasicPokemon)){ toast('⚠️ O deck da IA não tem nenhum Pokémon Básico!'); return; }
+  const mode=$('b-mode').value;
+  let myDeck=null, myCards=null;
+  if(mode==='treino'){
+    myDeck=decks.find(x=>x.id===$('b-mydeck').value);
+    if(!myDeck){ toast('Escolha o SEU deck pro treinamento'); return; }
+    myCards=expandDeck(myDeck);
+    if(!myCards.some(isBasicPokemon)){ toast('⚠️ Seu deck não tem nenhum Pokémon Básico!'); return; }
+  }
 
-  battle = { on:true, turnCount:0, deckName:d.name,
+  battle = { on:true, mode, turnCount:0, roundNo:0, plTurnNo:0, deckName:d.name,
     ai:{deck:shuffle(cards), hand:[], prizes:[], discard:[], active:null, bench:[]},
+    pl:null, phase:null, needPromote:false, plTurnActive:false, plEnergyUsed:false, plSupporterUsed:false,
     playerPrizes:0, aiPrizesTaken:0, firstPlayer:null, aiFirstTurnDone:false, log:[] };
 
   const ins=[];
@@ -1000,13 +1041,44 @@ function startBattle(){
     battle.ai.bench.push(mkSlot(b));
     ins.push('⬇️ IA coloca <b>'+esc(b.name)+'</b> no banco.');
   });
+  // lado do jogador (modo treinamento)
+  if(battle.mode==='treino'){
+    const myCards2=expandDeck(decks.find(x=>x.id===$('b-mydeck').value));
+    battle.pl={deck:shuffle(myCards2), hand:[], prizes:[], discard:[], active:null, bench:[]};
+    let mull=0;
+    while(true){
+      battle.pl.hand=battle.pl.deck.splice(0,7);
+      if(battle.pl.hand.some(isBasicPokemon)) break;
+      mull++; battle.pl.deck.push(...battle.pl.hand); battle.pl.hand=[]; shuffle(battle.pl.deck);
+      if(mull>20) break;
+    }
+    if(mull>0) ins.push('🔄 Você teve '+mull+' mulligan(s) — mão refeita.');
+    battle.pl.prizes=battle.pl.deck.splice(0,6);
+    const myBasics=battle.pl.hand.filter(isBasicPokemon).sort((a,b)=>(parseInt(b.hp)||0)-(parseInt(a.hp)||0));
+    const myAct=myBasics.shift();
+    battle.pl.hand.splice(battle.pl.hand.indexOf(myAct),1);
+    battle.pl.active=mkSlot(myAct);
+    ins.push('🧑 Seu Ativo inicial: <b>'+esc(myAct.name)+'</b> (o de maior HP).');
+    myBasics.slice(0,5).forEach(b=>{
+      battle.pl.hand.splice(battle.pl.hand.indexOf(b),1);
+      battle.pl.bench.push(mkSlot(b));
+      ins.push('⬇️ <b>'+esc(b.name)+'</b> foi pro seu banco.');
+    });
+  }
   // quem começa
   const f=$('b-first').value;
   if(f==='coin'){ battle.firstPlayer = Math.random()<0.5?'ai':'player'; ins.push('🪙 Moeda: <b>'+(battle.firstPlayer==='ai'?'IA começa!':'VOCÊ começa!')+'</b>'); }
   else { battle.firstPlayer=f; ins.push('▶ '+(f==='ai'?'IA começa.':'Você começa.')); }
-  ins.push(battle.firstPlayer==='ai'
-    ? '👉 Clique em <b>Executar turno da IA</b> pra ela jogar o 1º turno (sem atacar, regra oficial).'
-    : '👉 Jogue seu 1º turno físico (sem atacar). Depois clique em <b>Executar turno da IA</b>.');
+  battle.phase = battle.firstPlayer==='ai' ? 'ai' : 'pl';
+  if(battle.mode==='treino'){
+    ins.push(battle.firstPlayer==='ai'
+      ? '👉 Clique em <b>🤖 Executar turno da IA</b>.'
+      : '👉 Clique em <b>▶ Comprar e jogar meu turno</b> (1º turno: sem atacar).');
+  } else {
+    ins.push(battle.firstPlayer==='ai'
+      ? '👉 Clique em <b>Executar turno da IA</b> pra ela jogar o 1º turno (sem atacar, regra oficial).'
+      : '👉 Jogue seu 1º turno físico (sem atacar). Depois clique em <b>Executar turno da IA</b>.');
+  }
   pushLog('Preparação', ins);
   saveBattle();
   initBattleTab();
@@ -1082,8 +1154,13 @@ function trainerKind(c){
 // ---------- turno da IA ----------
 function aiExecuteTurn(){
   if(!battle || !battle.on) return;
+  if(battle.mode==='treino'){
+    if(battle.needPromote){ toast('Promova um Pokémon do seu banco primeiro (clique nele)'); return; }
+    if(battle.phase!=='ai'){ toast('Ainda é o seu turno — jogue ou encerre'); return; }
+  }
   const ai=battle.ai, ins=[];
   battle.turnCount++;
+  battle.roundNo=(battle.roundNo||0)+1;
   const isAiFirstEver = (battle.firstPlayer==='ai' && !battle.aiFirstTurnDone);
 
   // 1. comprar
@@ -1105,12 +1182,12 @@ function aiExecuteTurn(){
     const slots=[ai.active,...ai.bench].filter(Boolean);
     for(const c of [...ai.hand]){
       if(!isPokemon(c) || !c.evolvesFrom) continue;
-      const target=slots.find(s=>s.card.name===c.evolvesFrom && s.playedTurn<battle.turnCount && s.evolvedTurn!==battle.turnCount);
+      const target=slots.find(s=>s.card.name===c.evolvesFrom && s.playedTurn<battle.roundNo && s.evolvedTurn!==battle.roundNo);
       if(target){
         ai.hand.splice(ai.hand.indexOf(c),1);
         ai.discard.push(target.card);
         const oldName = target.card.name;
-        target.card=c; target.evolvedTurn=battle.turnCount;
+        target.card=c; target.evolvedTurn=battle.roundNo;
         // HP herda dano
         ins.push('⬆️ IA evolui <b>'+esc(oldName)+'</b> para <b>'+esc(c.name)+'</b>! <i>(troque a carta física, mantenha dano e energias)</i>');
       }
@@ -1156,8 +1233,20 @@ function aiExecuteTurn(){
       }
     }
     else if(kind==='boss'){
-      ai.hand.splice(ai.hand.indexOf(c),1); ai.discard.push(c);
-      ins.push('😈 IA usa <b>'+esc(c.name)+'</b>! <b>Traga do SEU banco pro ativo o Pokémon com MENOS HP restante.</b>'); used=true; supporterUsed=true;
+      if(battle.mode==='treino'){
+        if(battle.pl && battle.pl.bench.length && battle.pl.active){
+          let victim=battle.pl.bench[0];
+          battle.pl.bench.forEach(s=>{ if(s.energies.length<victim.energies.length) victim=s; });
+          battle.pl.bench.splice(battle.pl.bench.indexOf(victim),1);
+          battle.pl.bench.push(battle.pl.active);
+          battle.pl.active=victim;
+          ai.hand.splice(ai.hand.indexOf(c),1); ai.discard.push(c);
+          ins.push('😈 IA usa <b>'+esc(c.name)+'</b> e trouxe seu <b>'+esc(victim.card.name)+'</b> pro Ativo!'); used=true; supporterUsed=true;
+        }
+      } else {
+        ai.hand.splice(ai.hand.indexOf(c),1); ai.discard.push(c);
+        ins.push('😈 IA usa <b>'+esc(c.name)+'</b>! <b>Traga do SEU banco pro ativo o Pokémon com MENOS HP restante.</b>'); used=true; supporterUsed=true;
+      }
     }
     else if(kind==='energyRetrieval'){
       const ergs=ai.discard.filter(isBasicEnergy).slice(0,2);
@@ -1210,7 +1299,45 @@ function aiExecuteTurn(){
 
   // 7. ataque
   const noAttackTurn = isAiFirstEver; // 1º jogador não ataca no 1º turno
-  if(ai.active && !noAttackTurn){
+  if(battle.mode==='treino' && ai.active && !noAttackTurn && battle.pl && battle.pl.active){
+    const pA=battle.pl.active;
+    const pWeakT=(pA.card.weaknesses&&pA.card.weaknesses[0]&&pA.card.weaknesses[0].type)||null;
+    const pResT=(pA.card.resistances&&pA.card.resistances[0]&&pA.card.resistances[0].type)||null;
+    const pick=bestAttack(ai.active, pWeakT, pResT);
+    if(pick && pick.attack){
+      const a=pick.attack;
+      let final=baseDamage(a);
+      let mods='';
+      if(pWeakT && pWeakT===pick.type && final>0){ final*=2; mods=' (fraqueza ×2)'; }
+      if(pResT && pResT===pick.type){ final=Math.max(0,final-30); mods+=' (resist. −30)'; }
+      pA.damage+=final;
+      ins.push('⚔️ <b>IA ATACA!</b> '+esc(ai.active.card.name)+' usa <b>'+esc(a.name)+'</b> → <b>'+final+'</b> de dano'+mods+' no seu '+esc(pA.card.name)+'.');
+      if(a.text) ins.push('📖 Efeito: <i>'+esc(a.text)+'</i> (aplique com 🛠 se precisar)');
+      const php=parseInt(pA.card.hp)||60;
+      if(pA.damage>=php){
+        const nP=prizeValueOf(pA.card);
+        ins.push('☠️ Seu <b>'+esc(pA.card.name)+'</b> foi NOCAUTEADO! IA pega '+nP+' prêmio(s).');
+        battle.pl.discard.push(pA.card); pA.energies.forEach(e=>battle.pl.discard.push(e));
+        battle.pl.active=null;
+        for(let z=0;z<nP;z++){ if(ai.prizes.length) ai.hand.push(ai.prizes.shift()); }
+        if(ai.prizes.length===0){
+          pushLog('Turno '+battle.turnCount+' — 🤖 IA', ins); saveBattle(); renderBattle();
+          return endBattle('ai','A IA pegou todos os prêmios dela... <b>A IA VENCEU! 🤖</b> Revanche?');
+        }
+        if(!battle.pl.bench.length){
+          pushLog('Turno '+battle.turnCount+' — 🤖 IA', ins); saveBattle(); renderBattle();
+          return endBattle('ai','Você ficou sem Pokémon em jogo... <b>A IA VENCEU! 🤖</b> Revanche?');
+        }
+        battle.needPromote=true;
+        ins.push('👉 Clique num Pokémon do SEU banco pra promover como novo Ativo.');
+      } else {
+        ins.push('👉 Sua vez! Clique em <b>▶ Comprar e jogar meu turno</b>.');
+      }
+    } else {
+      ins.push('💤 IA não consegue atacar este turno. 👉 Sua vez: <b>▶ Comprar e jogar meu turno</b>.');
+    }
+  }
+  else if(ai.active && !noAttackTurn){
     const pWeak=$('b-my-weak').value||null;
     const pick=bestAttack(ai.active, pWeak, null);
     if(pick && pick.attack){
@@ -1230,9 +1357,10 @@ function aiExecuteTurn(){
     }
   } else if(noAttackTurn){
     ins.push('🚫 1º turno da IA: não pode atacar (regra). Fim do turno dela.');
-    ins.push('👉 Jogue o SEU turno normalmente e registre seu ataque.');
+    ins.push(battle.mode==='treino' ? '👉 Sua vez: <b>▶ Comprar e jogar meu turno</b>.' : '👉 Jogue o SEU turno normalmente e registre seu ataque.');
   }
   if(isAiFirstEver) battle.aiFirstTurnDone=true;
+  battle.phase='pl';
 
   pushLog('Turno '+battle.turnCount+' — 🤖 IA', ins);
   saveBattle(); renderBattle();
@@ -1331,14 +1459,356 @@ function confirmEndBattle(){
   initBattleTab();
 }
 
+// =====================================================================
+// MODO TREINAMENTO — eu jogo meu deck digital contra a IA
+// =====================================================================
+let plPending=null; // ação aguardando alvo: {kind, hand}
+function plMenuClear(){ plPending=null; const m=$('b-pl-menu'); if(m) m.innerHTML=''; }
+function plMsg(html){ $('b-pl-menu').innerHTML='<div class="attack-row">'+html+' <button class="btn ghost sm" onclick="plMenuClear()">cancelar</button></div>'; }
+function plStartTurn(){
+  if(!battle||!battle.on||battle.mode!=='treino') return;
+  if(battle.needPromote){ toast('Promova um Pokémon do banco primeiro (clique nele)'); return; }
+  if(battle.phase!=='pl'){ toast('É a vez da IA — clique 🤖 Executar turno da IA'); return; }
+  if(battle.plTurnActive) return;
+  if(!battle.pl.deck.length){ return endBattle('ai','Seu deck acabou (deck-out)... <b>A IA VENCEU! 🤖</b>'); }
+  battle.roundNo=(battle.roundNo||0)+1;
+  battle.plTurnNo=(battle.plTurnNo||0)+1;
+  battle.plTurnActive=true; battle.plEnergyUsed=false; battle.plSupporterUsed=false;
+  const c=battle.pl.deck.shift(); battle.pl.hand.push(c);
+  const ins=['🃏 Você comprou: <b>'+esc(c.name)+'</b>.',
+    'Clique nas cartas da MÃO pra jogar (banco/evoluir/energia/treinador) e no seu ATIVO pra atacar ou recuar. Atacar encerra o turno.'];
+  coachTips().slice(0,3).forEach(t=>ins.push('💡 '+t));
+  pushLog('Seu turno '+battle.plTurnNo+' — 🧑', ins);
+  saveBattle(); renderBattle();
+}
+function plEndTurn(attacked){
+  if(!battle||!battle.on||battle.mode!=='treino'||!battle.plTurnActive) return;
+  if(!attacked && !battle.plEnergyUsed && battle.pl.hand.some(isEnergy)){
+    if(!confirm('💡 Treinador: você NÃO anexou energia neste turno (pode 1 de graça!). Encerrar mesmo assim?')) return;
+  }
+  battle.plTurnActive=false; battle.phase='ai'; plMenuClear();
+  if(!attacked) pushLog('🧑 Fim do seu turno', ['Você encerrou sem atacar. 👉 Clique em <b>🤖 Executar turno da IA</b>.']);
+  saveBattle(); renderBattle();
+}
+function plDraw1(){
+  if(!battle||!battle.on||battle.mode!=='treino'||!battle.plTurnActive){ toast('Só durante o seu turno'); return; }
+  if(!battle.pl.deck.length){ toast('Deck vazio!'); return; }
+  const c=battle.pl.deck.shift(); battle.pl.hand.push(c);
+  pushLog('🛠 Efeito manual', ['Você comprou 1 carta ('+esc(c.name)+').']);
+  saveBattle(); renderBattle();
+}
+function plHandClick(i){
+  if(!battle||battle.mode!=='treino') return;
+  if(!battle.plTurnActive){ toast('Inicie seu turno primeiro (▶)'); return; }
+  const c=battle.pl.hand[i]; if(!c) return;
+  plPending=null;
+  const btns=[];
+  if(isBasicPokemon(c) && battle.pl.bench.length<5) btns.push(['⬇️ Jogar no banco','plToBench('+i+')']);
+  if(isPokemon(c) && c.evolvesFrom) btns.push(['⬆️ Evoluir','plBeginTarget(\'evolve\','+i+')']);
+  if(isEnergy(c)) btns.push([battle.plEnergyUsed?'⚡ Anexar (já anexou neste turno!)':'⚡ Anexar energia','plBeginTarget(\'energy\','+i+')']);
+  if(isTrainer(c)) btns.push(['🎓 Usar treinador','plUseTrainer('+i+')']);
+  btns.push(['🗑️ Descartar','plDiscardHand('+i+')']);
+  $('b-pl-menu').innerHTML='<div class="attack-row"><b>'+esc(c.name)+'</b>: '+
+    btns.map(b=>'<button class="btn sm" style="margin:2px" onclick="'+b[1]+'">'+b[0]+'</button>').join('')+
+    '<button class="btn ghost sm" onclick="plMenuClear()">fechar</button></div>';
+}
+function plToBench(i){
+  const c=battle.pl.hand[i]; if(!c||battle.pl.bench.length>=5) return;
+  battle.pl.hand.splice(i,1);
+  battle.pl.bench.push(mkSlot(c));
+  pushLog('🧑 Jogada', ['⬇️ Você colocou <b>'+esc(c.name)+'</b> no banco.']);
+  plMenuClear(); saveBattle(); renderBattle();
+}
+function plDiscardHand(i){
+  const c=battle.pl.hand[i]; if(!c) return;
+  if(!confirm('Descartar '+c.name+'?')) return;
+  battle.pl.hand.splice(i,1); battle.pl.discard.push(c);
+  plMenuClear(); saveBattle(); renderBattle();
+}
+function plBeginTarget(kind,i){
+  plPending={kind, hand:i};
+  const msgs={evolve:'clique no SEU Pokémon que vai evoluir', energy:'clique no SEU Pokémon que recebe a energia',
+    retreat:'clique no Pokémon do banco que entra no lugar', switch:'clique no Pokémon do banco que vira Ativo',
+    heal30:'clique no SEU Pokémon a curar', boss:'clique no Pokémon do BANCO DA IA que você quer trazer',
+    dmgplus:'clique no Pokémon que recebe +10 de dano', dmgminus:'clique no Pokémon que remove 10 de dano'};
+  plMsg('👉 '+msgs[kind]);
+}
+function plSlotClick(w){
+  if(!battle||battle.mode!=='treino') return;
+  const pl=battle.pl;
+  const slot = w==='A' ? pl.active : pl.bench[w];
+  if(battle.needPromote){
+    if(w==='A'||!slot) return;
+    pl.active=slot; pl.bench.splice(w,1); battle.needPromote=false;
+    pushLog('🧑 Promoção', ['Você promoveu <b>'+esc(slot.card.name)+'</b> como novo Ativo!']);
+    saveBattle(); renderBattle(); return;
+  }
+  if(!slot) return;
+  if(plPending){ plApplyPending(w, slot); return; }
+  if(!battle.plTurnActive) return;
+  if(w==='A') plActiveMenu();
+}
+function plApplyPending(w, slot){
+  const p=plPending; if(!p) return;
+  const pl=battle.pl;
+  if(p.kind==='energy'){
+    if(battle.plEnergyUsed){ toast('Já anexou energia neste turno'); plMenuClear(); return; }
+    const c=pl.hand[p.hand]; if(!c) { plMenuClear(); return; }
+    pl.hand.splice(p.hand,1); slot.energies.push(c); battle.plEnergyUsed=true;
+    pushLog('🧑 Jogada', ['⚡ Você anexou <b>'+esc(c.name)+'</b> em <b>'+esc(slot.card.name)+'</b>.']);
+  }
+  else if(p.kind==='evolve'){
+    const c=pl.hand[p.hand]; if(!c){ plMenuClear(); return; }
+    if(slot.card.name!==c.evolvesFrom){ toast('⚠️ '+c.name+' evolui de '+c.evolvesFrom+', não de '+slot.card.name); return; }
+    if(battle.plTurnNo<=1){ toast('Não pode evoluir no seu 1º turno'); plMenuClear(); return; }
+    if(slot.playedTurn>=battle.roundNo || slot.evolvedTurn===battle.roundNo){ toast('Esse Pokémon não pode evoluir neste turno'); plMenuClear(); return; }
+    pl.hand.splice(p.hand,1); pl.discard.push(slot.card);
+    const old=slot.card.name; slot.card=c; slot.evolvedTurn=battle.roundNo;
+    pushLog('🧑 Jogada', ['⬆️ Você evoluiu <b>'+esc(old)+'</b> para <b>'+esc(c.name)+'</b>!']);
+  }
+  else if(p.kind==='retreat'){
+    if(w==='A'){ toast('Clique num Pokémon do BANCO'); return; }
+    const act=pl.active, rc=(act.card.retreatCost||[]).length;
+    if(act.energies.length<rc){ toast('Energia insuficiente pro recuo'); plMenuClear(); return; }
+    for(let z=0;z<rc;z++) pl.discard.push(act.energies.pop());
+    pl.bench.splice(pl.bench.indexOf(slot),1); pl.bench.push(act); pl.active=slot;
+    pushLog('🧑 Jogada', ['🏃 Você recuou (pagou '+rc+') e promoveu <b>'+esc(slot.card.name)+'</b>.']);
+  }
+  else if(p.kind==='switch'){
+    if(w==='A'){ toast('Clique num Pokémon do BANCO'); return; }
+    pl.bench.splice(pl.bench.indexOf(slot),1); if(pl.active) pl.bench.push(pl.active); pl.active=slot;
+    pushLog('🧑 Jogada', ['🔁 Troca: <b>'+esc(slot.card.name)+'</b> agora é seu Ativo.']);
+  }
+  else if(p.kind==='heal30'){
+    slot.damage=Math.max(0,slot.damage-30);
+    pushLog('🧑 Jogada', ['🧪 Curou 30 de dano de <b>'+esc(slot.card.name)+'</b>.']);
+  }
+  else if(p.kind==='dmgplus'){ slot.damage+=10; pushLog('🛠 Efeito manual',['+10 dano em '+esc(slot.card.name)+' ('+slot.damage+')']); }
+  else if(p.kind==='dmgminus'){ slot.damage=Math.max(0,slot.damage-10); pushLog('🛠 Efeito manual',['−10 dano em '+esc(slot.card.name)+' ('+slot.damage+')']); }
+  plMenuClear(); saveBattle(); renderBattle();
+}
+function aiSlotClick(i){
+  if(!battle||battle.mode!=='treino') return;
+  if(plPending && plPending.kind==='boss'){
+    const slot=battle.ai.bench[i]; if(!slot) return;
+    battle.ai.bench.splice(i,1);
+    if(battle.ai.active) battle.ai.bench.push(battle.ai.active);
+    battle.ai.active=slot;
+    pushLog('🧑 Jogada', ['😈 Ordens do Chefe: você trouxe <b>'+esc(slot.card.name)+'</b> pro Ativo da IA!']);
+    plMenuClear(); saveBattle(); renderBattle();
+  }
+  else if(plPending && (plPending.kind==='dmgplus'||plPending.kind==='dmgminus')){
+    const slot = i==='A' ? battle.ai.active : battle.ai.bench[i]; if(!slot) return;
+    if(plPending.kind==='dmgplus') slot.damage+=10; else slot.damage=Math.max(0,slot.damage-10);
+    pushLog('🛠 Efeito manual',[(plPending.kind==='dmgplus'?'+':'−')+'10 dano em '+esc(slot.card.name)+' da IA ('+slot.damage+')']);
+    plMenuClear(); saveBattle();
+    const hp=parseInt(slot.card.hp)||60;
+    if(slot===battle.ai.active && slot.damage>=hp){ koAiActive([]); }
+    renderBattle();
+  }
+}
+function plActiveMenu(){
+  const s=battle.pl.active; if(!s) return;
+  const noAtk = (battle.firstPlayer==='player' && battle.plTurnNo===1);
+  let html='<b>'+esc(s.card.name)+'</b>: ';
+  (s.card.attacks||[]).forEach((a,ix)=>{
+    const ok=canPay(a.cost,s) && !noAtk;
+    html+='<button class="btn sm'+(ok?'':' ghost')+'" style="margin:2px" '+(ok?'onclick="plDoAttack('+ix+')"':'disabled')+'>'+
+      (a.cost||[]).map(tIcon).join('')+' '+esc(a.name)+' ('+esc(a.damage||'0')+')</button>';
+  });
+  const rc=(s.card.retreatCost||[]).length;
+  if(battle.pl.bench.length && s.energies.length>=rc)
+    html+='<button class="btn sm ghost" onclick="plBeginTarget(\'retreat\',-1)">🏃 Recuar ('+rc+')</button>';
+  html+='<button class="btn sm ghost" onclick="plBeginTarget(\'dmgplus\',-1)">🛠 +10</button><button class="btn sm ghost" onclick="plBeginTarget(\'dmgminus\',-1)">🛠 −10</button>';
+  if(noAtk) html+=' <span class="muted">1º turno: sem ataque</span>';
+  $('b-pl-menu').innerHTML='<div class="attack-row">'+html+'<button class="btn ghost sm" onclick="plMenuClear()">fechar</button></div>';
+}
+function koAiActive(ins){
+  const slot=battle.ai.active;
+  const prizes=prizeValueOf(slot.card);
+  ins.push('☠️ <b>'+esc(slot.card.name)+' da IA foi NOCAUTEADA!</b> Você pega <b>'+prizes+'</b> prêmio(s)! 🏆');
+  battle.ai.discard.push(slot.card); slot.energies.forEach(e=>battle.ai.discard.push(e));
+  battle.ai.active=null;
+  if(battle.mode==='treino'){
+    for(let z=0;z<prizes;z++){ if(battle.pl.prizes.length){ const pz=battle.pl.prizes.shift(); battle.pl.hand.push(pz); ins.push('🏆 Prêmio revelado: <b>'+esc(pz.name)+'</b> (foi pra sua mão).'); } }
+    if(battle.pl.prizes.length===0){ pushLog('🧑 Seu ataque', ins); saveBattle(); renderBattle(); endBattle('player','Você pegou todos os prêmios! <b>VOCÊ VENCEU! 🎉🏆</b>'); return true; }
+  } else {
+    battle.playerPrizes+=prizes;
+    if(battle.playerPrizes>=6){ pushLog('🧑 Seu ataque', ins); saveBattle(); renderBattle(); endBattle('player','Você pegou todos os 6 prêmios! <b>VOCÊ VENCEU! 🎉🏆</b>'); return true; }
+  }
+  if(!battle.ai.bench.length){ pushLog('🧑 Seu ataque', ins); saveBattle(); renderBattle(); endBattle('player','A IA ficou sem Pokémon! <b>VOCÊ VENCEU! 🎉🏆</b>'); return true; }
+  const next=battle.ai.bench.sort((a,b)=>{
+    if(b.energies.length!==a.energies.length) return b.energies.length-a.energies.length;
+    return (parseInt(b.card.hp)||0)-(parseInt(a.card.hp)||0);
+  })[0];
+  battle.ai.bench.splice(battle.ai.bench.indexOf(next),1);
+  battle.ai.active=next;
+  ins.push('▶ IA promove <b>'+esc(next.card.name)+'</b> como novo Ativo.');
+  return false;
+}
+function plDoAttack(ix){
+  const s=battle.pl.active; if(!s) return;
+  const a=(s.card.attacks||[])[ix]; if(!a) return;
+  const tgt=battle.ai.active;
+  if(!tgt){ toast('IA sem ativo'); return; }
+  const myType=s.card.types?s.card.types[0]:'Colorless';
+  let final=baseDamage(a); let mods='';
+  const w=(tgt.card.weaknesses||[]).find(x=>x.type===myType);
+  const r=(tgt.card.resistances||[]).find(x=>x.type===myType);
+  if(w && final>0){ final*=2; mods=' (fraqueza ×2)'; }
+  if(r){ final=Math.max(0,final-30); mods+=' (resist. −30)'; }
+  const ins=['⚔️ <b>'+esc(s.card.name)+'</b> usou <b>'+esc(a.name)+'</b> → <b>'+final+'</b> de dano'+mods+' na '+esc(tgt.card.name)+' da IA.'];
+  if(a.text) ins.push('📖 Efeito: <i>'+esc(a.text)+'</i> (aplique com 🛠 se precisar)');
+  tgt.damage+=final;
+  const hp=parseInt(tgt.card.hp)||60;
+  let ended=false;
+  if(tgt.damage>=hp){ ended=!!koAiActive(ins); }
+  if(!ended){ pushLog('🧑 Seu ataque', ins); }
+  battle.plTurnActive=false; battle.phase='ai'; plMenuClear();
+  if(!ended){
+    battle.log[battle.log.length-1].instrs.push('👉 Agora clique em <b>🤖 Executar turno da IA</b>.');
+    saveBattle(); renderBattle();
+  }
+}
+function plUseTrainer(i){
+  const c=battle.pl.hand[i]; if(!c) return;
+  const pl=battle.pl;
+  const kind=trainerKind(c);
+  const isSupporter=(c.subtypes||[]).includes('Supporter')||['research','draw3','boss'].includes(kind);
+  if(isSupporter && battle.plSupporterUsed){ toast('Já usou um Apoiador neste turno'); return; }
+  if(kind==='potion'){ pl.hand.splice(i,1); pl.discard.push(c); plBeginTarget('heal30',-1); }
+  else if(kind==='research'){
+    if(!confirm(c.name+': descartar a mão inteira e comprar 7?')) return;
+    pl.hand.splice(i,1); pl.discard.push(c);
+    pl.discard.push(...pl.hand); pl.hand=pl.deck.splice(0,7);
+    battle.plSupporterUsed=true;
+    pushLog('🧑 Jogada', ['👩‍🔬 '+esc(c.name)+': mão descartada, 7 compradas.']);
+  }
+  else if(kind==='draw3'){
+    pl.hand.splice(i,1); pl.discard.push(c);
+    pl.hand.push(...pl.deck.splice(0,3));
+    battle.plSupporterUsed=true;
+    pushLog('🧑 Jogada', ['🙋 '+esc(c.name)+': comprou 3 cartas.']);
+  }
+  else if(kind==='switch'){ pl.hand.splice(i,1); pl.discard.push(c); plBeginTarget('switch',-1); }
+  else if(kind==='boss'){
+    if(!battle.ai.bench.length){ toast('A IA não tem banco'); return; }
+    pl.hand.splice(i,1); pl.discard.push(c); battle.plSupporterUsed=true;
+    plBeginTarget('boss',-1);
+  }
+  else if(kind==='searchBasic'){
+    const basics=pl.deck.filter(isBasicPokemon);
+    if(!basics.length){ toast('Nenhum Básico no deck'); return; }
+    if(pl.bench.length>=5){ toast('Banco cheio'); return; }
+    const names=[...new Set(basics.map(b=>b.name))].slice(0,12);
+    $('b-pl-menu').innerHTML='<div class="attack-row">🔮 '+esc(c.name)+' — escolha o Básico: '+
+      names.map(n=>'<button class="btn sm" style="margin:2px" onclick="plSearchPick('+i+',\''+n.replace(/'/g,"\\'")+'\')">'+esc(n)+'</button>').join('')+
+      '<button class="btn ghost sm" onclick="plMenuClear()">cancelar</button></div>';
+  }
+  else if(kind==='energyRetrieval'){
+    const ergs=pl.discard.filter(isBasicEnergy).slice(0,2);
+    if(!ergs.length){ toast('Nenhuma energia básica no descarte'); return; }
+    ergs.forEach(e=>{ pl.discard.splice(pl.discard.indexOf(e),1); pl.hand.push(e); });
+    pl.hand.splice(pl.hand.indexOf(c),1); pl.discard.push(c);
+    pushLog('🧑 Jogada', ['♻️ '+esc(c.name)+': recuperou '+ergs.length+' energia(s) do descarte.']);
+  }
+  else{
+    pl.hand.splice(i,1); pl.discard.push(c);
+    pushLog('🧑 Jogada', ['🎓 Você usou <b>'+esc(c.name)+'</b>. Efeito: <i>'+esc((c.rules||['(veja a carta)']).join(' '))+'</i> — aplique com as ferramentas 🛠 (comprar carta, ±10 dano, etc).']);
+  }
+  if(kind!=='potion'&&kind!=='switch'&&kind!=='boss'&&kind!=='searchBasic') plMenuClear();
+  saveBattle(); renderBattle();
+}
+function plSearchPick(trainerIdx, name){
+  const pl=battle.pl;
+  const di=pl.deck.findIndex(x=>x.name===name && isBasicPokemon(x));
+  if(di<0){ plMenuClear(); return; }
+  const found=pl.deck.splice(di,1)[0];
+  pl.bench.push(mkSlot(found));
+  const t=pl.hand[trainerIdx];
+  if(t){ pl.hand.splice(trainerIdx,1); pl.discard.push(t); }
+  shuffle(pl.deck);
+  pushLog('🧑 Jogada', ['🔮 Você buscou <b>'+esc(found.name)+'</b> no deck e colocou no banco.']);
+  plMenuClear(); saveBattle(); renderBattle();
+}
+function coachTips(){
+  const tips=[], pl=battle.pl, ai=battle.ai;
+  if(!pl) return tips;
+  const s=pl.active;
+  // 1. dá pra dar nocaute?
+  if(s && ai.active){
+    const rem=(parseInt(ai.active.card.hp)||60)-ai.active.damage;
+    const myType=s.card.types?s.card.types[0]:'Colorless';
+    (s.card.attacks||[]).forEach(a=>{
+      if(!canPay(a.cost,s)) return;
+      let d=baseDamage(a);
+      if((ai.active.card.weaknesses||[]).some(x=>x.type===myType) && d>0) d*=2;
+      if((ai.active.card.resistances||[]).some(x=>x.type===myType)) d=Math.max(0,d-30);
+      if(d>=rem) tips.push('🎯 <b>'+esc(a.name)+'</b> dá NOCAUTE na '+esc(ai.active.card.name)+' agora ('+d+' de dano vs '+rem+' HP restante)!');
+    });
+  }
+  // 2. perigo: a IA pode me nocautear?
+  if(s && ai.active){
+    const myWeak=(s.card.weaknesses&&s.card.weaknesses[0]&&s.card.weaknesses[0].type)||null;
+    const pick=bestAttack(ai.active, myWeak, null);
+    if(pick && pick.attack){
+      const remMe=(parseInt(s.card.hp)||60)-s.damage;
+      if(pick.dmg>=remMe) tips.push('⚠️ CUIDADO: o '+esc(ai.active.card.name)+' pode nocautear seu '+esc(s.card.name)+' no próximo turno ('+pick.dmg+' vs '+remMe+' HP). Recuar ou dar nocaute antes?');
+    }
+  }
+  // 3. ataque quase pronto — falta energia
+  if(s){
+    const locked=(s.card.attacks||[]).filter(a=>!canPay(a.cost,s));
+    if(locked.length && pl.hand.some(isEnergy) && !battle.plEnergyUsed)
+      tips.push('⚡ Você ainda não anexou energia neste turno — <b>'+esc(locked[0].name)+'</b> pode ficar mais perto de usar.');
+  }
+  // 4. evolução na mão
+  const slots=[pl.active,...pl.bench].filter(Boolean);
+  pl.hand.forEach(c=>{
+    if(isPokemon(c)&&c.evolvesFrom&&slots.some(x=>x.card.name===c.evolvesFrom))
+      tips.push('⬆️ Você tem <b>'+esc(c.name)+'</b> na mão — dá pra evoluir seu '+esc(c.evolvesFrom)+'!');
+  });
+  // 5. banco vazio = risco
+  if(!pl.bench.length && pl.hand.some(isBasicPokemon))
+    tips.push('🛡️ Seu banco está vazio! Se seu Ativo cair, você perde. Coloque Básicos no banco.');
+  // 6. apoiador disponível
+  if(!battle.plSupporterUsed && pl.hand.some(c=>isTrainer(c)&&['research','draw3','boss'].includes(trainerKind(c))))
+    tips.push('🎓 Você ainda pode usar 1 Apoiador neste turno (Pesquisa/Hop/Ordens do Chefe...).');
+  return tips;
+}
+function plCoach(){
+  if(!battle||!battle.on||battle.mode!=='treino'){ toast('Só no modo treinamento'); return; }
+  const tips=coachTips();
+  pushLog('💡 Treinador', tips.length?tips:['👍 Nada crítico agora: jogue básicos, anexe energia no atacante e pressione o ataque!']);
+  saveBattle(); renderBattle();
+}
+function renderPl(){
+  const pl=battle.pl; if(!pl) return;
+  $('b-pl-deck').textContent=pl.deck.length;
+  $('b-pl-prizes').textContent=pl.prizes.length;
+  $('b-pl-discard').textContent=pl.discard.length;
+  $('b-pl-handn').textContent=pl.hand.length;
+  let bh='';
+  if(pl.active) bh+=slotHtml(pl.active,true,'plSlotClick(\'A\')');
+  else if(battle.needPromote) bh+='<div class="pkm-slot active-slot" style="display:flex;align-items:center;justify-content:center;color:var(--orange)">☠️ Promova<br>do banco!</div>';
+  pl.bench.forEach((s,i)=>bh+=slotHtml(s,false,'plSlotClick('+i+')'));
+  $('b-pl-board').innerHTML=bh||'<p class="muted">— sem Pokémon —</p>';
+  $('b-pl-hand').innerHTML=pl.hand.map((c,i)=>{
+    const img=cardImg(c);
+    return '<div class="pkm-slot" style="width:96px;cursor:pointer" onclick="plHandClick('+i+')">'+
+      (img?'<img src="'+img+'">':'<div class="noimg" style="font-size:.6rem"><span>'+esc(c.name)+'</span></div>')+
+      '<div style="font-size:.62rem;margin-top:2px">'+esc(c.name)+'</div></div>';
+  }).join('')||'<p class="muted">mão vazia</p>';
+}
+
 // ---------- render batalha ----------
-function slotHtml(slot, isActive){
+function slotHtml(slot, isActive, click){
   const hp=parseInt(slot.card.hp)||60;
   const rem=Math.max(0,hp-slot.damage);
   const pct=rem/hp*100;
   const cls=pct<=25?'low':(pct<=55?'mid':'');
   const img=cardImg(slot.card);
-  return '<div class="pkm-slot'+(isActive?' active-slot':'')+'">'+
+  return '<div class="pkm-slot'+(isActive?' active-slot':'')+'"'+(click?' onclick="'+click+'" style="cursor:pointer"':'')+'>'+
     (isActive?'<div style="color:var(--accent);font-weight:800;margin-bottom:3px">ATIVO</div>':'')+
     (img?'<img src="'+img+'">':'<div class="noimg"><span class="big">'+tIcon(slot.card.types?slot.card.types[0]:'Colorless')+'</span><span>'+esc(slot.card.name)+'</span></div>')+
     '<div style="font-weight:700;margin-top:4px">'+esc(slot.card.name)+'</div>'+
@@ -1355,10 +1825,24 @@ function renderBattle(){
   $('b-ai-discard').textContent=battle.ai.discard.length;
   $('b-my-prizes').textContent=battle.playerPrizes;
   $('b-turncount').textContent=battle.turnCount;
+  const treino = battle.mode==='treino';
   let bh='';
-  if(battle.ai.active) bh+=slotHtml(battle.ai.active,true);
-  battle.ai.bench.forEach(s=>bh+=slotHtml(s,false));
+  if(battle.ai.active) bh+=slotHtml(battle.ai.active,true, treino?'aiSlotClick(\'A\')':null);
+  battle.ai.bench.forEach((s,i)=>bh+=slotHtml(s,false, treino?'aiSlotClick('+i+')':null));
   $('b-ai-board').innerHTML=bh||'<p class="muted">— sem Pokémon em jogo —</p>';
+  // zonas por modo
+  $('b-pl-zone').style.display = treino?'block':'none';
+  $('b-player-panel').style.display = treino?'none':'block';
+  if(treino){
+    renderPl();
+    const aiBtn=$('b-aiturn-btn');
+    aiBtn.disabled = !battle.on || battle.phase!=='ai' || battle.needPromote;
+    aiBtn.style.opacity = aiBtn.disabled? .45 : 1;
+    $('b-pl-start').style.display = (battle.on && battle.phase==='pl' && !battle.plTurnActive && !battle.needPromote)?'':'none';
+    $('b-pl-end').style.display = (battle.on && battle.plTurnActive)?'':'none';
+  } else {
+    const aiBtn=$('b-aiturn-btn'); aiBtn.disabled=!battle.on; aiBtn.style.opacity=battle.on?1:.45;
+  }
   const lg=$('battle-log');
   lg.innerHTML=battle.log.map((b,i)=>
     '<div class="turn-block'+(i===battle.log.length-1?' latest':'')+'"><div class="tt">'+b.title+'</div>'+
