@@ -196,7 +196,7 @@
       <select id="pd-deck" style="display:none; max-width:320px"></select>
       <button class="btn gold" id="pd-import-btn" onclick="importPredeck()" style="display:none">⬇️ Importar</button>
     </div>
-    <h3>⚡ League Battle Decks modernos (já embutidos no app)</h3>
+    <h3>⚡ Baralhos Batalha de Liga modernos (já embutidos, cartas em português)</h3>
     <div class="row">
       <button class="btn sm" onclick="importModern(0)">🔥 Charizard ex</button>
       <button class="btn sm" onclick="importModern(1)">🔮 Gardevoir ex</button>
@@ -696,6 +696,16 @@ async function openCardModal(c){
   html+='</div>';
   if(c.attacks && c.attacks.length){
     html+='<h3>Ataques</h3>'+c.attacks.map(a=>'<div class="attack-row"><b>'+ (a.cost||[]).map(tIcon).join('') +' '+esc(a.name)+'</b> — '+esc(a.damage||'—')+(a.text?'<br><span class="muted">'+esc(a.text)+'</span>':'')+'</div>').join('');
+  }
+  if(c.rules && c.rules.length && c.rules.join('').trim()){
+    html+='<h3>📖 O que a carta faz</h3><div class="attack-row"><span class="muted">'+c.rules.map(esc).join('<br>')+'</span></div>';
+  }
+  if(c.weaknesses||c.resistances||c.retreatCost){
+    html+='<div style="margin-top:6px">'+
+      (c.weaknesses?'<span class="pill">Fraqueza: '+c.weaknesses.map(x=>tIcon(x.type)+' '+esc(x.value||'×2')).join(', ')+'</span>':'')+
+      (c.resistances?'<span class="pill">Resistência: '+c.resistances.map(x=>tIcon(x.type)+' '+esc(x.value||'-30')).join(', ')+'</span>':'')+
+      (c.retreatCost&&c.retreatCost.length?'<span class="pill">Recuo: '+c.retreatCost.length+'</span>':'')+
+    '</div>';
   }
   html += '<h3>💰 Cotação internacional</h3><div id="modal-prices"><span class="spin"></span> carregando preços...</div>';
   // ---- cotação Brasil: links de busca + preço manual
@@ -1507,11 +1517,13 @@ function plHandClick(i){
   if(isPokemon(c) && c.evolvesFrom) btns.push(['⬆️ Evoluir','plBeginTarget(\'evolve\','+i+')']);
   if(isEnergy(c)) btns.push([battle.plEnergyUsed?'⚡ Anexar (já anexou neste turno!)':'⚡ Anexar energia','plBeginTarget(\'energy\','+i+')']);
   if(isTrainer(c)) btns.push(['🎓 Usar treinador','plUseTrainer('+i+')']);
+  btns.push(['🔍 Ver carta ampliada','plZoomHand('+i+')']);
   btns.push(['🗑️ Descartar','plDiscardHand('+i+')']);
   $('b-pl-menu').innerHTML='<div class="attack-row"><b>'+esc(c.name)+'</b>: '+
     btns.map(b=>'<button class="btn sm" style="margin:2px" onclick="'+b[1]+'">'+b[0]+'</button>').join('')+
     '<button class="btn ghost sm" onclick="plMenuClear()">fechar</button></div>';
 }
+function plZoomHand(i){ const c=battle.pl.hand[i]; if(c) openCardModal(c); }
 function plToBench(i){
   const c=battle.pl.hand[i]; if(!c||battle.pl.bench.length>=5) return;
   battle.pl.hand.splice(i,1);
@@ -1545,8 +1557,8 @@ function plSlotClick(w){
   }
   if(!slot) return;
   if(plPending){ plApplyPending(w, slot); return; }
-  if(!battle.plTurnActive) return;
-  if(w==='A') plActiveMenu();
+  if(w==='A' && battle.plTurnActive){ plActiveMenu(); return; }
+  openCardModal(slot.card); // 🔍 zoom da carta
 }
 function plApplyPending(w, slot){
   const p=plPending; if(!p) return;
@@ -1588,23 +1600,26 @@ function plApplyPending(w, slot){
   plMenuClear(); saveBattle(); renderBattle();
 }
 function aiSlotClick(i){
-  if(!battle||battle.mode!=='treino') return;
-  if(plPending && plPending.kind==='boss'){
-    const slot=battle.ai.bench[i]; if(!slot) return;
+  if(!battle) return;
+  const slot = i==='A' ? battle.ai.active : battle.ai.bench[i];
+  if(!slot) return;
+  if(battle.mode==='treino' && plPending && plPending.kind==='boss' && i!=='A'){
     battle.ai.bench.splice(i,1);
     if(battle.ai.active) battle.ai.bench.push(battle.ai.active);
     battle.ai.active=slot;
     pushLog('🧑 Jogada', ['😈 Ordens do Chefe: você trouxe <b>'+esc(slot.card.name)+'</b> pro Ativo da IA!']);
     plMenuClear(); saveBattle(); renderBattle();
   }
-  else if(plPending && (plPending.kind==='dmgplus'||plPending.kind==='dmgminus')){
-    const slot = i==='A' ? battle.ai.active : battle.ai.bench[i]; if(!slot) return;
+  else if(battle.mode==='treino' && plPending && (plPending.kind==='dmgplus'||plPending.kind==='dmgminus')){
     if(plPending.kind==='dmgplus') slot.damage+=10; else slot.damage=Math.max(0,slot.damage-10);
     pushLog('🛠 Efeito manual',[(plPending.kind==='dmgplus'?'+':'−')+'10 dano em '+esc(slot.card.name)+' da IA ('+slot.damage+')']);
     plMenuClear(); saveBattle();
     const hp=parseInt(slot.card.hp)||60;
     if(slot===battle.ai.active && slot.damage>=hp){ koAiActive([]); }
     renderBattle();
+  }
+  else{
+    openCardModal(slot.card); // 🔍 zoom: imagem grande + texto da carta
   }
 }
 function plActiveMenu(){
@@ -1619,6 +1634,7 @@ function plActiveMenu(){
   const rc=(s.card.retreatCost||[]).length;
   if(battle.pl.bench.length && s.energies.length>=rc)
     html+='<button class="btn sm ghost" onclick="plBeginTarget(\'retreat\',-1)">🏃 Recuar ('+rc+')</button>';
+  html+='<button class="btn sm ghost" onclick="openCardModal(battle.pl.active.card)">🔍 Ver</button>';
   html+='<button class="btn sm ghost" onclick="plBeginTarget(\'dmgplus\',-1)">🛠 +10</button><button class="btn sm ghost" onclick="plBeginTarget(\'dmgminus\',-1)">🛠 −10</button>';
   if(noAtk) html+=' <span class="muted">1º turno: sem ataque</span>';
   $('b-pl-menu').innerHTML='<div class="attack-row">'+html+'<button class="btn ghost sm" onclick="plMenuClear()">fechar</button></div>';
@@ -2088,9 +2104,9 @@ function downloadLojaOnline(){
 // =====================================================================
 // ---- League Battle Decks modernos (listas oficiais verificadas, IDs TCGdex validados)
 const MODERN_DECKS=[
- {name:'Charizard ex — League Battle Deck', cards:[['sv04.5-007',4],['sv04.5-008',3],['sv03-125',3],['sv03.5-016',3],['sv03.5-017',2],['sv03-164',2],['sv03.5-146',3],['sv02-185',4],['sv01-166',2],['sv02-171',2],['sv05-144',4],['sv01-191',4],['sv01-196',4],['sv05-157',1],['sv02-188',1],['sv01-194',1],['sv02-172',2],['sv01-189',2],['sv04-178',2],['sv01-169',1],['sve-002',10]]},
- {name:'Gardevoir ex — League Battle Deck', cards:[['sv01-086',3],['swsh12-068',4],['swsh12-067',4],['sv01-089',3],['swsh11-074',1],['swsh9-040',1],['sv03.5-151',1],['swsh10-046',1],['sv02-185',4],['sv01-189',3],['sv01-166',2],['sv02-172',2],['sv01-175',1],['sv02-171',2],['sv01-181',4],['sv01-196',4],['sv01-191',3],['sv02-188',1],['sv02-173',3],['sve-005',13]]},
- {name:'Miraidon ex — League Battle Deck', cards:[['sv01-081',2],['swsh12-058',2],['swsh12-057',2],['swsh10-051',2],['swsh12-056',2],['swsh9-121',2],['swsh9-120',2],['sv01-166',4],['sv02-172',4],['sv01-190',4],['sv01-170',4],['sv01-181',3],['sv01-194',2],['sv01-196',4],['swsh12-156',1],['swsh12-160',1],['sv01-197',2],['sv01-167',2],['sve-004',15]], extra:[['swsh9-048',2]]},
+ {name:'Charizard ex — Baralho Batalha de Liga', cards:[['sv04.5-007',4],['sv04.5-008',3],['sv03-125',3],['sv03.5-016',3],['sv03.5-017',2],['sv03-164',2],['sv03.5-146',3],['sv02-185',4],['sv01-166',2],['sv02-171',2],['sv05-144',4],['sv01-191',4],['sv01-196',4],['sv05-157',1],['sv02-188',1],['sv01-194',1],['sv02-172',2],['sv01-189',2],['sv04-178',2],['sv01-169',1],['sve-002',10]]},
+ {name:'Gardevoir ex — Baralho Batalha de Liga', cards:[['sv01-086',3],['swsh12-068',4],['swsh12-067',4],['sv01-089',3],['swsh11-074',1],['swsh9-040',1],['sv03.5-151',1],['swsh10-046',1],['sv02-185',4],['sv01-189',3],['sv01-166',2],['sv02-172',2],['sv01-175',1],['sv02-171',2],['sv01-181',4],['sv01-196',4],['sv01-191',3],['sv02-188',1],['sv02-173',3],['sve-005',13]]},
+ {name:'Miraidon ex — Baralho Batalha de Liga', cards:[['sv01-081',2],['swsh12-058',2],['swsh12-057',2],['swsh10-051',2],['swsh12-056',2],['swsh9-121',2],['swsh9-120',2],['sv01-166',4],['sv02-172',4],['sv01-190',4],['sv01-170',4],['sv01-181',3],['sv01-194',2],['sv01-196',4],['swsh12-156',1],['swsh12-160',1],['sv01-197',2],['sv01-167',2],['sve-004',15]], extra:[['swsh9-048',2]]},
 ];
 async function importModern(i){
   const def=MODERN_DECKS[i], st=$('pd-status');
