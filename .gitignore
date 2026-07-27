@@ -1,0 +1,5 @@
+LOJA_ACESSOS.txt
+*.key
+.db_pass*
+.key_*
+_check.js
