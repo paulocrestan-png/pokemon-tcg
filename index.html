@@ -152,7 +152,7 @@
     <div id="ck-mylist" style="margin-bottom:10px"></div>
     <div class="row">
       <button class="btn" id="ck-load-btn" onclick="loadSetsIndex()">📥 Carregar coleções</button>
-      <input id="ck-filter" placeholder="filtrar (ex.: fantasmag...)" style="display:none; min-width:170px" oninput="fillSetSelect()">
+      <input id="ck-filter" placeholder="🔍 pesquisar coleção..." style="display:none; min-width:170px" oninput="fillSetSelect()">
       <select id="ck-set" style="display:none; max-width:300px" onchange="openSetChecklist()"></select>
     </div>
     <div id="ck-status" class="muted" style="margin-top:8px"></div>
@@ -187,6 +187,7 @@
     <p class="muted" style="margin-bottom:10px">Importe um deck oficial pronto da Pokémon (Base Set até a era Sword & Shield). Depois de importar, ele vira SEU deck: edite à vontade, coloque e tire cartas.</p>
     <div class="row">
       <button class="btn" id="pd-load-btn" onclick="loadPredeckIndex()">📥 Carregar lista de pré-decks</button>
+      <input id="pd-filter" placeholder="🔍 pesquisar coleção..." style="display:none; min-width:170px" oninput="pdFillSetSelect()">
       <select id="pd-set" onchange="pdSetChanged()" style="display:none; max-width:230px"></select>
       <select id="pd-deck" style="display:none; max-width:230px"></select>
       <button class="btn gold" id="pd-import-btn" onclick="importPredeck()" style="display:none">⬇️ Importar</button>
@@ -1606,14 +1607,21 @@ async function loadPredeckIndex(){
     const sm={}; sets.forEach(s=>sm[s.id]={name:s.name,date:s.releaseDate||''});
     pdSets=files.map(f=>f.name.replace('.json','')).map(id=>({id, name:(sm[id]&&sm[id].name)||id, date:(sm[id]&&sm[id].date)||''}))
       .sort((a,b)=>b.date.localeCompare(a.date));
-    $('pd-set').innerHTML=pdSets.map(s=>'<option value="'+s.id+'">'+esc(s.name)+' ('+(s.date||'?').slice(0,4)+')</option>').join('');
-    $('pd-set').style.display=''; $('pd-deck').style.display=''; $('pd-import-btn').style.display='';
+    $('pd-filter').style.display=''; $('pd-set').style.display=''; $('pd-deck').style.display=''; $('pd-import-btn').style.display='';
     $('pd-load-btn').style.display='none';
-    st.textContent=pdSets.length+' coleções com pré-decks oficiais. Escolha a coleção e o deck:';
-    pdSetChanged();
+    st.textContent=pdSets.length+' coleções com pré-decks oficiais. Pesquise, escolha a coleção e o deck:';
+    pdFillSetSelect();
   }catch(e){ st.textContent='⚠️ Falha ao baixar a lista ('+e.message+'). Verifique a internet e tente de novo.'; }
 }
+function pdFillSetSelect(){
+  if(!pdSets) return;
+  const f=($('pd-filter').value||'').toLowerCase();
+  const opts=pdSets.filter(s=>(s.name||'').toLowerCase().includes(f)||(s.id||'').toLowerCase().includes(f));
+  $('pd-set').innerHTML=opts.map(s=>'<option value="'+s.id+'">'+esc(s.name)+' ('+(s.date||'?').slice(0,4)+')</option>').join('') || '<option value="">— nada encontrado —</option>';
+  pdSetChanged();
+}
 async function pdSetChanged(){
+  if(!$('pd-set').value){ $('pd-deck').innerHTML=''; return; }
   const sid=$('pd-set').value, st=$('pd-status');
   $('pd-deck').innerHTML='<option>carregando...</option>';
   try{
