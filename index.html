@@ -569,11 +569,19 @@ async function apiPokemontcg(name, number, setName){
 // --- TCGdex (fallback): busca resumida + detalhe por carta, normalizado pro formato do app
 function normTcgdex(c){
   const n={ id:'tcgdex-'+c.id, name:c.name };
-  n.supertype = c.category==='Pokemon' ? 'Pokémon' : (c.category==='Energy' ? 'Energy' : 'Trainer');
+  // category e stage vêm traduzidos no endpoint pt (Pokémon/Energia/Treinador, Básico/Estágio 1...)
+  const cat=(c.category||'').toLowerCase();
+  n.supertype = cat.indexOf('pok')===0 ? 'Pokémon' : (cat.indexOf('energ')===0 ? 'Energy' : 'Trainer');
   const subs=[];
-  if(c.stage) subs.push(c.stage.replace(/^Stage(\d)$/,'Stage $1'));
+  if(c.stage){
+    const stageMap={'basic':'Basic','básico':'Basic','basico':'Basic',
+      'stage1':'Stage 1','stage 1':'Stage 1','estágio 1':'Stage 1','estagio 1':'Stage 1',
+      'stage2':'Stage 2','stage 2':'Stage 2','estágio 2':'Stage 2','estagio 2':'Stage 2'};
+    subs.push(stageMap[(c.stage||'').toLowerCase()] || c.stage.replace(/^Stage(\d)$/,'Stage $1'));
+  }
+  if(c.trainerType) subs.push((c.trainerType==='Apoiador'||c.trainerType==='Supporter')?'Supporter':c.trainerType);
   if(c.suffix) subs.push(c.suffix);
-  if(n.supertype==='Energy' && !subs.length) subs.push('Basic');
+  if(n.supertype==='Energy' && !subs.some(s=>s==='Basic')) subs.push('Basic');
   if(subs.length) n.subtypes=subs;
   if(c.hp!=null) n.hp=String(c.hp);
   if(c.types) n.types=c.types;
