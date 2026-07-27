@@ -164,6 +164,7 @@
         <button class="btn sm ghost" id="ckm-have" onclick="ckFilterMode('have')">Tenho</button>
         <button class="btn sm" onclick="copyCkList('have')">📋 Copiar tenho</button>
         <button class="btn sm ghost" onclick="copyCkList('miss')">📋 Copiar faltando</button>
+        <button class="btn sm ghost" id="ck-lock" onclick="ckToggleLock()" title="Travar/destravar marcação">🔓</button>
       </div>
       <div class="hpbar" style="height:12px"><div id="ck-bar" style="width:0%"></div></div>
       <div id="ck-value" class="muted" style="margin-top:8px"></div>
@@ -1864,11 +1865,26 @@ async function loadSetIntoChecklist(sid){
   $('ck-panel').style.display='block';
   ckMode='all'; ckRarity=null;
   ['all','miss','have'].forEach(x=>$('ckm-'+x).classList.toggle('on', x==='all'));
+  ckRenderLock();
   renderChecklist();
   $('ck-panel').scrollIntoView({behavior:'smooth'});
 }
 function ckHave(){ if(!checks[ckSetId]) checks[ckSetId]={}; return checks[ckSetId]; }
+LS.cklock='ptcg_cklock';
+let ckLocked = load(LS.cklock, false);
+function ckToggleLock(){
+  ckLocked=!ckLocked;
+  save(LS.cklock, ckLocked);
+  ckRenderLock();
+  toast(ckLocked?'🔒 Checklist travado — só visualização':'🔓 Checklist destravado — pode marcar');
+}
+function ckRenderLock(){
+  const b=$('ck-lock'); if(!b) return;
+  b.textContent=ckLocked?'🔒':'🔓';
+  b.classList.toggle('on', ckLocked);
+}
 function toggleCk(cid){
+  if(ckLocked){ toast('🔒 Travado! Clique no cadeado pra destravar.'); return; }
   const k=ckHave();
   if(k[cid]) delete k[cid]; else k[cid]=true;
   save(LS.checks, checks);
@@ -1949,24 +1965,16 @@ async function copyText(txt, okMsg){
     document.body.removeChild(ta);
   }
 }
-function collectionLines(){
-  const R=rates;
+function copyCollectionList(){
   const entries=Object.values(collection).sort((a,b)=>a.card.name.localeCompare(b.card.name));
-  let total=0, valor=0;
+  if(!entries.length){ toast('Coleção vazia'); return; }
+  let total=0;
   const lines=entries.map(e=>{
     total+=e.qty;
-    const b=getCardBRL(e.card,R);
-    if(b!=null) valor+=b*e.qty;
-    const setTxt=(e.card.set?e.card.set.name:'')+(e.card.number?' Nº '+e.card.number:'');
-    return e.qty+'x '+e.card.name+(setTxt?' — '+setTxt:'')+(e.card.rarity?' — '+e.card.rarity:'')+(b!=null?' — '+brl(b)+(e.qty>1?' (cada)':''):'');
+    return (e.card.number?'Nº '+e.card.number+' · ':'')+e.card.name+(e.qty>1?' ('+e.qty+'x)':'');
   });
-  return {lines, total, valor};
-}
-function copyCollectionList(){
-  const {lines,total,valor}=collectionLines();
-  if(!lines.length){ toast('Coleção vazia'); return; }
   const txt='📚 MINHA COLEÇÃO POKÉMON TCG — '+new Date().toLocaleDateString('pt-BR')+'\n'+
-    'Total: '+total+' carta(s)'+(valor?' · Valor estimado: '+brl(valor):'')+'\n\n'+
+    'Total: '+total+' carta(s)\n\n'+
     lines.join('\n');
   copyText(txt);
 }
@@ -1988,20 +1996,14 @@ function downloadCollectionCsv(){
 }
 function copyCkList(modo){
   if(!ckCards.length){ toast('Abra uma coleção primeiro'); return; }
-  const have=ckHave(), R=rates;
+  const have=ckHave();
   const setName=($('ck-status').textContent||'').replace('📦 ','').split(' — ')[0]||ckSetId;
   const nHave=ckCards.filter(c=>have[c.id]).length;
   const list=ckCards.filter(c=> modo==='have' ? have[c.id] : !have[c.id]);
   if(!list.length){ toast(modo==='have'?'Nenhuma carta marcada ainda':'Não falta nada — coleção completa! 🏆'); return; }
-  let valor=0;
-  const lines=list.map(c=>{
-    const b=cardBrlPrice(c,R);
-    if(b!=null) valor+=b;
-    return 'Nº '+c.n+' · '+c.name+' · '+c.rar+(b!=null?' · '+brl(b):'');
-  });
+  const lines=list.map(c=>'Nº '+c.n+' · '+c.name);
   const txt='🎯 '+setName.toUpperCase()+' — '+(modo==='have'?'CARTAS QUE TENHO':'CARTAS QUE FALTAM')+'\n'+
-    'Progresso: '+nHave+' de '+ckCards.length+' ('+Math.round(nHave/ckCards.length*100)+'%)'+
-    (valor?' · Valor desta lista: '+brl(valor):'')+'\n\n'+
+    'Progresso: '+nHave+' de '+ckCards.length+' ('+Math.round(nHave/ckCards.length*100)+'%)\n\n'+
     lines.join('\n');
   copyText(txt, modo==='have'?'📋 Lista "tenho" copiada!':'📋 Lista "faltando" copiada!');
 }
