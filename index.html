@@ -221,8 +221,11 @@
       <div class="ai-stat">Pokémon: <b id="d-npkm">0</b></div>
       <div class="ai-stat">Treinadores: <b id="d-ntrn">0</b></div>
       <div class="ai-stat">Energias: <b id="d-nerg">0</b></div>
+      <button class="btn sm" onclick="showDeckAnalysis()">📊 Análise estratégica</button>
+      <button class="btn sm ghost" onclick="professorDeck()">🎓 Professor</button>
       <button class="btn ghost sm" onclick="closeDeckEditor()">Fechar editor</button>
     </div>
+    <div id="d-analysis"></div>
     <h3>⚡ Adicionar energia básica rápida</h3>
     <div class="row" id="d-energy-btns"></div>
     <h3>🔍 Adicionar carta (busca online)</h3>
@@ -346,6 +349,7 @@
         <button class="btn gold" id="b-pl-start" onclick="plStartTurn()">▶ Comprar e jogar meu turno</button>
         <button class="btn green" id="b-pl-end" onclick="plEndTurn(false)" style="display:none">✅ Encerrar meu turno (sem atacar)</button>
         <button class="btn sm" onclick="plCoach()">💡 Dica do treinador</button>
+        <button class="btn sm" onclick="professorBattle()">🎓 Professor</button>
         <button class="btn ghost sm" onclick="plDraw1()">🛠 Comprar 1 (efeito manual)</button>
       </div>
     </div>
@@ -389,6 +393,15 @@
       🌐 <b>Fontes de dados:</b> busca de cartas tenta a API oficial do Pokémon TCG e cai automaticamente pra TCGdex se ela estiver fora do ar (as duas têm imagens e preços). Pré-decks oficiais vêm do repositório público pokemon-tcg-data.
     </div>
     <p class="muted">Dados salvos no navegador (localStorage) deste aparelho. A batalha em andamento também fica salva se você fechar a página.</p>
+  </div>
+  <div class="card-panel">
+    <h2>🎓 Professor de Estratégia (IA Claude — opcional)</h2>
+    <p class="muted" style="margin-bottom:10px">Conecte uma chave da API da Anthropic e desbloqueie o <b>Professor</b>: uma IA de verdade que estuda seus decks, entende contra quem você está lutando e te aconselha em nível profissional durante a batalha. A chave fica salva só neste aparelho. Cada consulta custa centavos (~R$ 0,20). Crie a sua em <b>console.anthropic.com</b> → API Keys.</p>
+    <div class="row">
+      <input id="ak-key" type="password" placeholder="sk-ant-api..." style="flex:1; min-width:220px" onchange="saveApiKey()">
+      <button class="btn sm" onclick="testProfessor()">🔌 Testar conexão</button>
+    </div>
+    <div id="ak-status" class="muted" style="margin-top:8px"></div>
   </div>
   <div class="card-panel">
     <h2>💾 Backup / Restaurar (levar seus dados pra outro aparelho)</h2>
@@ -1082,6 +1095,10 @@ function startBattle(){
       battle.pl.bench.push(mkSlot(b));
       ins.push('⬇️ <b>'+esc(b.name)+'</b> foi pro seu banco.');
     });
+  }
+  // briefing de confronto (modo treinamento)
+  if(battle.mode==='treino' && myDeck){
+    matchupBriefing(myDeck, d).forEach(x=>ins.push(x));
   }
   // quem começa
   const f=$('b-first').value;
@@ -2572,6 +2589,176 @@ function copyCkList(modo){
 }
 
 // =====================================================================
+// ANÁLISE ESTRATÉGICA (heurística, grátis)
+// =====================================================================
+function deckStats(d){
+  const s={pkm:[],trn:[],erg:[],attackers:[],prizeLiab:0,drawCards:0,searchCards:0,types:{}};
+  d.cards.forEach(e=>{
+    const c=e.card;
+    if(isPokemon(c)){
+      s.pkm.push(e);
+      (c.types||[]).forEach(t=>s.types[t]=(s.types[t]||0)+e.qty);
+      if(prizeValueOf(c)>1) s.prizeLiab+=e.qty;
+      (c.attacks||[]).forEach(a=>{
+        const dmg=baseDamage(a), cost=(a.cost||[]).length;
+        if(dmg>0) s.attackers.push({name:c.name, atk:a.name, dmg, cost, eff:dmg/Math.max(1,cost), hp:parseInt(c.hp)||0, basic:isBasicPokemon(c)});
+      });
+    }
+    else if(isEnergy(c)) s.erg.push(e);
+    else{
+      s.trn.push(e);
+      const k=trainerKind(c);
+      if(k==='research'||k==='draw3') s.drawCards+=e.qty;
+      if(k==='searchBasic') s.searchCards+=e.qty;
+    }
+  });
+  s.attackers.sort((a,b)=>b.dmg-a.dmg);
+  s.domType=Object.keys(s.types).sort((a,b)=>s.types[b]-s.types[a])[0]||null;
+  s.nErg=s.erg.reduce((t,e)=>t+e.qty,0);
+  return s;
+}
+function showDeckAnalysis(){
+  const d=decks.find(x=>x.id===currentDeckId); if(!d) return;
+  const s=deckStats(d);
+  let h='<div class="help-box" style="margin-top:12px"><b>📊 Análise estratégica — '+esc(d.name)+'</b><br><br>';
+  // atacantes
+  h+='<b>⚔️ Seus atacantes principais:</b><br>';
+  s.attackers.slice(0,4).forEach(a=>{
+    h+='• <b>'+esc(a.name)+'</b> — '+esc(a.atk)+': '+a.dmg+' de dano por '+a.cost+' energia(s) (eficiência '+a.eff.toFixed(0)+'/⚡)'+(a.basic?' · básico (rápido!)':'')+'<br>';
+  });
+  // curva de energia
+  const maxCost=s.attackers.length?Math.max(...s.attackers.map(a=>a.cost)):0;
+  h+='<br><b>⚡ Energia:</b> '+s.nErg+' no deck; seu ataque mais caro custa '+maxCost+'. ';
+  h+= s.nErg>=maxCost*3 ? 'Boa reserva.' : '⚠️ Pode faltar energia nos turnos finais — considere +2.';
+  // evolução
+  const names=new Set(d.cards.filter(e=>isPokemon(e.card)).map(e=>e.card.name));
+  const broken=d.cards.filter(e=>isPokemon(e.card)&&e.card.evolvesFrom&&!names.has(e.card.evolvesFrom));
+  if(broken.length) h+='<br><b>⚠️ Linha de evolução quebrada:</b> '+broken.map(e=>esc(e.card.name)+' (falta '+esc(e.card.evolvesFrom)+')').join(', ');
+  // motor de compra
+  h+='<br><b>🃏 Motor de compra:</b> '+s.drawCards+' carta(s) de compra + '+s.searchCards+' de busca. ';
+  h+= s.drawCards>=6 ? 'Consistente.' : '⚠️ Pouca compra — decks profissionais usam 8-12 (Pesquisa, Iono...).';
+  // prêmios
+  h+='<br><b>🏆 Risco de prêmios:</b> '+s.prizeLiab+' carta(s) que dão 2-3 prêmios ao cair (ex/V/VMAX). ';
+  h+= s.prizeLiab>8 ? '⚠️ Alto — o oponente vence com poucos nocautes.' : 'Equilibrado.';
+  if(s.domType) h+='<br><b>'+tIcon(s.domType)+' Tipo dominante:</b> '+tPt(s.domType)+' — cuidado com decks que exploram fraqueza a '+tPt(s.domType)+'.';
+  h+='</div>';
+  $('d-analysis').innerHTML=h;
+}
+function matchupBriefing(myD, aiD){
+  const my=deckStats(myD), ai=deckStats(aiD), ins=[];
+  ins.push('🧭 <b>BRIEFING DE CONFRONTO</b> — '+esc(myD.name)+' vs '+esc(aiD.name));
+  if(my.domType) ins.push(tIcon(my.domType)+' Seu deck é majoritariamente <b>'+tPt(my.domType)+'</b>; o da IA é <b>'+(ai.domType?tPt(ai.domType):'misto')+'</b>.');
+  // fraquezas exploráveis
+  let iHit=0, theyHit=0;
+  aiD.cards.forEach(e=>{ if(isPokemon(e.card)&&(e.card.weaknesses||[]).some(w=>w.type===my.domType)) iHit+=e.qty; });
+  myD.cards.forEach(e=>{ if(isPokemon(e.card)&&(e.card.weaknesses||[]).some(w=>w.type===ai.domType)) theyHit+=e.qty; });
+  if(iHit) ins.push('🎯 <b>Vantagem sua:</b> '+iHit+' Pokémon da IA são FRACOS ao seu tipo — seus ataques valem dano em DOBRO neles!');
+  if(theyHit) ins.push('⚠️ <b>Perigo:</b> '+theyHit+' dos seus Pokémon são fracos ao tipo da IA — proteja-os no banco ou troque rápido.');
+  if(!iHit&&!theyHit) ins.push('⚖️ Nenhum lado explora fraqueza — vence quem trocar melhor os prêmios.');
+  // ameaça chave
+  if(ai.attackers[0]) ins.push('👹 <b>Maior ameaça da IA:</b> '+esc(ai.attackers[0].name)+' ('+esc(ai.attackers[0].atk)+', '+ai.attackers[0].dmg+' de dano). Planeje como nocauteá-lo ANTES de ele carregar '+ai.attackers[0].cost+' energias.');
+  if(my.attackers[0]) ins.push('🗡️ <b>Sua melhor arma:</b> '+esc(my.attackers[0].name)+' ('+my.attackers[0].dmg+' de dano por '+my.attackers[0].cost+'⚡).');
+  // plano de prêmios
+  ins.push('🏆 <b>Plano de prêmios:</b> a IA tem '+ai.prizeLiab+' alvo(s) de 2-3 prêmios — derrubar 2-3 deles fecha o jogo. Evite expor os seus '+my.prizeLiab+' de graça.');
+  return ins;
+}
+
+// =====================================================================
+// 🎓 PROFESSOR — conselheiro profissional via API Claude (opcional)
+// =====================================================================
+LS.akey='ptcg_anthropic_key';
+function getApiKey(){ return load(LS.akey,''); }
+function saveApiKey(){ save(LS.akey, $('ak-key').value.trim()); toast('🔑 Chave salva neste aparelho'); }
+const PROF_SYSTEM = 'Você é um treinador profissional de Pokémon TCG dando coaching ao vivo num app (formato casual com regras principais: fraqueza ×2, resistência −30, 1 energia/turno, 1 apoiador/turno, ex/V valem 2 prêmios e VMAX/VSTAR valem 3). Responda SEMPRE em português do Brasil, direto e didático, em no máximo 150 palavras, com no máximo 3 recomendações priorizadas (1º a mais importante). Sempre explique O PORQUÊ de cada jogada — o objetivo é ENSINAR o jogador a pensar como profissional: troca de prêmios, sequenciamento, gestão de recursos e leitura do oponente.';
+async function callProfessor(userPrompt){
+  const key=getApiKey();
+  if(!key) throw new Error('Configure a chave da API na aba ❓ Ajuda (seção 🎓 Professor)');
+  const r=await fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',
+    headers:{
+      'content-type':'application/json',
+      'x-api-key':key,
+      'anthropic-version':'2023-06-01',
+      'anthropic-dangerous-direct-browser-access':'true'
+    },
+    body:JSON.stringify({
+      model:'claude-opus-5',
+      max_tokens:4096,
+      system:PROF_SYSTEM,
+      messages:[{role:'user',content:userPrompt}]
+    })
+  });
+  if(!r.ok){
+    const err=await r.json().catch(()=>({}));
+    if(r.status===401) throw new Error('Chave da API inválida — confira na aba Ajuda');
+    throw new Error('API respondeu '+r.status+': '+((err.error&&err.error.message)||''));
+  }
+  const data=await r.json();
+  if(data.stop_reason==='refusal') throw new Error('O Professor não pôde responder essa');
+  const txt=(data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('\n');
+  if(!txt) throw new Error('Resposta vazia');
+  return txt;
+}
+function deckListText(d){
+  return d.cards.map(e=>{
+    const c=e.card;
+    let x=e.qty+'x '+c.name;
+    if(isPokemon(c)) x+=' (HP'+(c.hp||'?')+(c.attacks&&c.attacks[0]?', '+c.attacks.map(a=>a.name+' '+(a.damage||'0')+' custo'+((a.cost||[]).length)).join('; '):'')+')';
+    return x;
+  }).join('\n');
+}
+async function testProfessor(){
+  const st=$('ak-status');
+  save(LS.akey, $('ak-key').value.trim());
+  st.innerHTML='<span class="spin"></span> testando...';
+  try{
+    const t=await callProfessor('Diga apenas: "Pronto pra treinar, campeão!"');
+    st.innerHTML='✅ Conectado! O Professor disse: <i>'+esc(t.slice(0,80))+'</i>';
+  }catch(e){ st.textContent='⚠️ '+e.message; }
+}
+function slotBrief(s){
+  if(!s) return 'nenhum';
+  const hp=parseInt(s.card.hp)||60;
+  return s.card.name+' ('+(hp-s.damage)+'/'+hp+' HP, '+s.energies.length+' energias)';
+}
+async function professorBattle(){
+  if(!battle||!battle.on){ toast('Inicie uma batalha primeiro'); return; }
+  const q=prompt('🎓 Pergunta pro Professor (ou deixe vazio pra conselho geral da situação):','')||'';
+  pushLog('🎓 Professor', ['<span class="spin"></span> analisando a partida...']);
+  saveBattle(); renderBattle();
+  let ctx='SITUAÇÃO ATUAL DA PARTIDA:\n';
+  if(battle.mode==='treino'&&battle.pl){
+    ctx+='MEU ATIVO: '+slotBrief(battle.pl.active)+'\nMEU BANCO: '+(battle.pl.bench.map(slotBrief).join('; ')||'vazio');
+    ctx+='\nMINHA MÃO: '+battle.pl.hand.map(c=>c.name).join(', ');
+    ctx+='\nMeus prêmios restantes: '+battle.pl.prizes.length+' | Deck: '+battle.pl.deck.length;
+  }
+  ctx+='\nATIVO DA IA: '+slotBrief(battle.ai.active)+'\nBANCO DA IA: '+(battle.ai.bench.map(slotBrief).join('; ')||'vazio');
+  ctx+='\nPrêmios da IA restantes: '+battle.ai.prizes.length+' | Mão da IA: '+battle.ai.hand.length+' cartas (ocultas)';
+  ctx+='\nTurno: '+battle.turnCount+' | Vez: '+(battle.phase==='pl'?'minha':'da IA');
+  const dAi=decks.find(x=>x.id===$('b-aideck').value);
+  if(dAi) ctx+='\n\nDECK DA IA (conhecido): '+dAi.cards.map(e=>e.qty+'x '+e.card.name).join(', ');
+  ctx+='\n\n'+(q?('MINHA PERGUNTA: '+q):'O que devo fazer agora e por quê? Qual o plano pros próximos 2 turnos?');
+  try{
+    const resp=await callProfessor(ctx);
+    battle.log[battle.log.length-1].instrs=[esc(resp).replace(/\n/g,'<br>')];
+  }catch(e){
+    battle.log[battle.log.length-1].instrs=['⚠️ '+esc(e.message)];
+  }
+  saveBattle(); renderBattle();
+}
+async function professorDeck(){
+  const d=decks.find(x=>x.id===currentDeckId); if(!d){ toast('Abra um deck'); return; }
+  $('d-analysis').innerHTML='<div class="help-box" style="margin-top:12px"><span class="spin"></span> 🎓 O Professor está estudando seu deck...</div>';
+  const prompt='Analise meu deck de Pokémon TCG em nível profissional. Diga: 1) a estratégia principal e como pilotá-lo, 2) os 2 maiores pontos fracos, 3) até 3 trocas de cartas que o deixariam mais forte.\n\nDECK "'+d.name+'" ('+deckCount(d)+' cartas):\n'+deckListText(d);
+  try{
+    const resp=await callProfessor(prompt);
+    $('d-analysis').innerHTML='<div class="help-box" style="margin-top:12px"><b>🎓 Professor sobre "'+esc(d.name)+'":</b><br><br>'+esc(resp).replace(/\n/g,'<br>')+'</div>';
+  }catch(e){
+    $('d-analysis').innerHTML='<div class="warn-box" style="margin-top:12px">⚠️ '+esc(e.message)+'</div>';
+  }
+}
+
+// =====================================================================
 // BACKUP / RESTAURAR
 // =====================================================================
 function backupTudo(){
@@ -2605,6 +2792,7 @@ function restaurarTudo(ev){
 
 // ---------- init ----------
 fillTypeSelects();
+if($('ak-key')) $('ak-key').value=getApiKey();
 manualSuperChange();
 renderCollection();
 renderDeckList();
