@@ -18,9 +18,16 @@ let TOKEN = '';
 try { TOKEN = fs.readFileSync(path.join(__dirname, 'PROFESSOR_TOKEN.txt'), 'utf8').trim(); } catch (e) {}
 
 function perguntarAoClaude(prompt, cb) {
+  // Limpa marcadores de sessão do Claude Code — sem isso, se o servidor for
+  // iniciado de dentro de uma sessão do Claude, o `claude -p` recusa (nested)
+  const env = { ...process.env };
+  delete env.CLAUDECODE;
+  delete env.CLAUDE_CODE_ENTRYPOINT;
+  delete env.CLAUDE_CODE_SSE_PORT;
   const p = spawn('claude', ['-p', '--output-format', 'text'], {
     shell: process.platform === 'win32',
     windowsHide: true,
+    env,
   });
   let out = '', err = '';
   const timer = setTimeout(() => { p.kill(); }, 180000); // 3 min máx
