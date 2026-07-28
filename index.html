@@ -738,19 +738,20 @@ async function openCardModal(c){
       (c.retreatCost&&c.retreatCost.length?'<span class="pill">Recuo: '+c.retreatCost.length+'</span>':'')+
     '</div>';
   }
-  html += '<h3>💰 Cotação internacional</h3><div id="modal-prices"><span class="spin"></span> carregando preços...</div>';
+  html += '<h3>💰 Cotação internacional <span class="muted" style="font-size:.7rem;font-weight:400">(carta em INGLÊS — EUA/Europa; a versão BR costuma valer menos)</span></h3><div id="modal-prices"><span class="spin"></span> carregando preços...</div>';
   // ---- cotação Brasil: links de busca + preço manual
   const q = encodeURIComponent(('carta pokemon '+c.name+' '+(c.number||'')).trim());
   const lk = (url,label)=>'<a class="btn sm" style="text-decoration:none" target="_blank" href="'+url+'">'+label+'</a>';
   html += '<h3>🇧🇷 Cotação Brasil (abre a busca pronta)</h3><div class="row">'+
-    lk('https://www.ligapokemon.com.br/?view=cards/search&card='+encodeURIComponent(c.name),'⚡ Liga Pokémon')+
+    '<a class="btn green sm" style="text-decoration:none;font-weight:800" target="_blank" href="https://www.ligapokemon.com.br/?view=cards/search&card='+encodeURIComponent(c.name)+'">⚡ Liga Pokémon ⭐ referência BR</a>'+
     lk('https://lista.mercadolivre.com.br/'+q,'🛒 Mercado Livre')+
     lk('https://www.magazineluiza.com.br/busca/'+q+'/','💙 Magalu')+
     lk('https://shopee.com.br/search?keyword='+q,'🧡 Shopee')+
     lk('https://www.amazon.com.br/s?k='+q,'📦 Amazon')+
-  '</div>';
+  '</div>'+
+  '<p class="muted" style="margin:4px 0 0;font-size:.75rem">💡 A Liga é o termômetro do preço BR (carta em português). Abra, veja o "a partir de R$" e salve aqui embaixo — esse valor passa a valer na sua coleção e na loja.</p>';
   html += '<div class="row" style="margin-top:8px">'+
-    '<select id="q-store"><option>Magalu</option><option>Mercado Livre</option><option>Liga Pokémon</option><option>Shopee</option><option>Amazon</option><option>Loja local</option><option>Outro</option></select>'+
+    '<select id="q-store"><option>Liga Pokémon</option><option>Mercado Livre</option><option>Magalu</option><option>Shopee</option><option>Amazon</option><option>Loja local</option><option>Outro</option></select>'+
     '<input id="q-val" type="number" step="0.01" min="0" placeholder="R$ que encontrei" style="width:140px">'+
     '<button class="btn green sm" onclick="saveQuoteFromModal()">💾 Salvar preço</button>'+
   '</div><div id="modal-quotes"></div>';
@@ -2426,6 +2427,7 @@ function renderLoja(){
       '<select onchange="storeUpd('+i+',\'cond\',this.value)">'+
         ['NM (perfeita)','SP (levemente usada)','MP (usada)','HP (bem usada)'].map(o=>'<option'+(it.cond===o?' selected':'')+'>'+o+'</option>').join('')+
       '</select>'+
+      '<a class="btn ghost sm" style="text-decoration:none" target="_blank" title="conferir preço na Liga Pokémon" href="https://www.ligapokemon.com.br/?view=cards/search&card='+encodeURIComponent(it.card.name)+'">⚡ Liga</a>'+
       '<button class="btn red sm" onclick="storeRemove('+i+')">✕</button>'+
       '</div></div>';
   }).join('') || '<p class="muted">Nenhuma carta à venda ainda — clique numa carta da coleção aqui embaixo.</p>';
