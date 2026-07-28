@@ -1184,19 +1184,53 @@ function neededEnergyType(slot){
 }
 
 // ---------- treinadores conhecidos ----------
+function isSupporterCard(c){ return (c.subtypes||[]).some(s=>/^(supporter|apoiador)/i.test(s)); }
+function isToolCard(c){ return (c.subtypes||[]).some(s=>/tool|ferramenta/i.test(s)); }
+function isStadiumCard(c){ return (c.subtypes||[]).some(s=>/stadium|est[aá]dio/i.test(s)); }
+function isStage2(c){ return isPokemon(c) && (c.subtypes||[]).some(s=>/stage 2|est[aá]gio 2/i.test(s)); }
+function slotMaxHp(s){ return (parseInt(s.card.hp)||60)+(s.hpBonus||0); }
 function trainerKind(c){
   const n=(c.name||'').toLowerCase();
+  if(isToolCard(c)) return 'tool';
+  if(isStadiumCard(c)) return 'stadium';
   if(/potion|poção|pocao/.test(n)) return 'potion';
   if(/professor.*(research|pesquisa)|pesquisa de professores/.test(n)) return 'research';
-  if(/^(hop|hau|cheren|tierno|shauna)/.test(n)) return 'draw3';
+  if(/^(hop|hau|cheren|tierno|shauna)\b/.test(n)) return 'draw3';
+  if(/^[íi]ono\b/.test(n)) return 'iono';
+  if(/^(judge|juiz)\b/.test(n)) return 'judge';
+  if(/^(arven|dami[aã]o)\b/.test(n)) return 'arven';
+  if(/ultra ball|ultra bola|bola ultra/.test(n)) return 'ultraBall';
+  if(/great ball|grande bola|bola grande/.test(n)) return 'greatBall';
+  if(/quick ball|bola rápida|bola rapida/.test(n)) return 'quickBall';
+  if(/nest ball|bola ninho/.test(n)) return 'searchBasic';
+  if(/level ball|bola de n[ií]vel/.test(n)) return 'levelBall';
+  if(/rare candy|doce raro/.test(n)) return 'rareCandy';
+  if(/escape rope|corda de fuga/.test(n)) return 'escapeRope';
   if(/switch|troca/.test(n) && !/switch cart/.test(n)) return 'switch';
-  if(/nest ball|bola ninho|quick ball|bola rápida|bola rapida|level ball/.test(n)) return 'searchBasic';
   if(/boss('|’)?s orders|ordens do chefe/.test(n)) return 'boss';
-  if(/energy retrieval|resgate de energia/.test(n)) return 'energyRetrieval';
+  if(/counter catcher|apanhador (contra|de contra)|capturador contra/.test(n)) return 'counterCatcher';
+  if(/energy retrieval|resgate de energia|recupera[çc][aã]o de energia/.test(n)) return 'energyRetrieval';
+  if(/super rod|super vara|supervara/.test(n)) return 'superRod';
+  if(/earthen vessel|vaso (terroso|de barro|terrestre)/.test(n)) return 'earthenVessel';
+  if(/vip pass|passe vip/.test(n)) return 'vipPass';
+  if(/electric generator|gerador el[eé]trico/.test(n)) return 'electricGenerator';
+  if(/pok[eé]gear/.test(n)) return 'pokegear';
   return null;
 }
+function isSupporterish(c){ return isSupporterCard(c) || ['research','draw3','boss','iono','judge','arven'].includes(trainerKind(c)); }
 
 // ---------- turno da IA ----------
+function aiWorstCards(ai,n,notCard){
+  const score=x=> isBasicEnergy(x)?0 : (isTrainer(x)?1 : (isBasicPokemon(x)?3:2));
+  return ai.hand.filter(x=>x!==notCard).slice().sort((a,b)=>score(a)-score(b)).slice(0,n);
+}
+function aiBestPokemonFromDeck(ai, filter){
+  const pool=ai.deck.filter(filter||isPokemon);
+  if(!pool.length) return null;
+  const inPlay=[ai.active,...ai.bench].filter(Boolean).map(s=>s.card.name);
+  return pool.find(x=>x.evolvesFrom&&inPlay.includes(x.evolvesFrom))
+      || pool.slice().sort((a,b)=>(parseInt(b.hp)||0)-(parseInt(a.hp)||0))[0];
+}
 function aiExecuteTurn(){
   if(!battle || !battle.on) return;
   if(battle.mode==='treino'){
@@ -1245,7 +1279,7 @@ function aiExecuteTurn(){
     if(!isTrainer(c)) continue;
     const kind=trainerKind(c);
     if(!kind) continue;
-    const isSupporter=(c.subtypes||[]).includes('Supporter')||['research','draw3','boss'].includes(kind);
+    const isSupporter=isSupporterish(c);
     if(isSupporter && supporterUsed) continue;
     let used=false;
     if(kind==='potion' && ai.active && ai.active.damage>=30){
@@ -1300,6 +1334,143 @@ function aiExecuteTurn(){
         ai.hand.splice(ai.hand.indexOf(c),1); ai.discard.push(c);
         ins.push('♻️ IA usa <b>'+esc(c.name)+'</b>: recupera '+ergs.length+' energia(s) do descarte.'); used=true;
       }
+    }
+    else if(kind==='ultraBall' && ai.hand.length>=3 && ai.deck.some(isPokemon)){
+      const cost=aiWorstCards(ai,2,c);
+      if(cost.length===2){
+        cost.forEach(x=>{ ai.hand.splice(ai.hand.indexOf(x),1); ai.discard.push(x); });
+        const found=aiBestPokemonFromDeck(ai);
+        ai.deck.splice(ai.deck.indexOf(found),1); ai.hand.push(found);
+        ai.hand.splice(ai.hand.indexOf(c),1); ai.discard.push(c); shuffle(ai.deck);
+        ins.push('🎓 IA usa <b>'+esc(c.name)+'</b>: descarta 2 da mão e busca <b>'+esc(found.name)+'</b> no deck.'); used=true;
+      }
+    }
+    else if(kind==='quickBall' && ai.hand.length>=2 && ai.deck.some(isBasicPokemon)){
+      const cost=aiWorstCards(ai,1,c);
+      cost.forEach(x=>{ ai.hand.splice(ai.hand.indexOf(x),1); ai.discard.push(x); });
+      const found=aiBestPokemonFromDeck(ai, isBasicPokemon);
+      ai.deck.splice(ai.deck.indexOf(found),1); ai.hand.push(found);
+      ai.hand.splice(ai.hand.indexOf(c),1); ai.discard.push(c); shuffle(ai.deck);
+      ins.push('🎓 IA usa <b>'+esc(c.name)+'</b>: descarta 1 e busca <b>'+esc(found.name)+'</b>.'); used=true;
+    }
+    else if(kind==='greatBall'){
+      const top=ai.deck.slice(0,7), pk=top.filter(isPokemon);
+      if(pk.length){
+        const found=pk.sort((a,b)=>(parseInt(b.hp)||0)-(parseInt(a.hp)||0))[0];
+        ai.deck.splice(ai.deck.indexOf(found),1); ai.hand.push(found);
+        ai.hand.splice(ai.hand.indexOf(c),1); ai.discard.push(c); shuffle(ai.deck);
+        ins.push('🎓 IA usa <b>'+esc(c.name)+'</b>: olhou as 7 do topo e pegou <b>'+esc(found.name)+'</b>.'); used=true;
+      }
+    }
+    else if(kind==='levelBall'){
+      const found=aiBestPokemonFromDeck(ai, x=>isPokemon(x)&&(parseInt(x.hp)||999)<=90);
+      if(found){
+        ai.deck.splice(ai.deck.indexOf(found),1); ai.hand.push(found);
+        ai.hand.splice(ai.hand.indexOf(c),1); ai.discard.push(c); shuffle(ai.deck);
+        ins.push('🎓 IA usa <b>'+esc(c.name)+'</b>: busca <b>'+esc(found.name)+'</b> (HP≤90).'); used=true;
+      }
+    }
+    else if(kind==='rareCandy' && !isAiFirstEver){
+      const slots=[ai.active,...ai.bench].filter(Boolean);
+      let done=false;
+      for(const st2 of ai.hand.filter(isStage2)){
+        if(done) break;
+        const mid=[...ai.deck,...ai.hand,...ai.discard].find(x=>isPokemon(x)&&x.name===st2.evolvesFrom);
+        const basicName=mid?mid.evolvesFrom:null;
+        const slot=slots.find(s=>isBasicPokemon(s.card)&&s.playedTurn<battle.roundNo&&s.evolvedTurn!==battle.roundNo&&basicName&&s.card.name===basicName);
+        if(slot){
+          ai.hand.splice(ai.hand.indexOf(st2),1);
+          ai.hand.splice(ai.hand.indexOf(c),1); ai.discard.push(c);
+          ai.discard.push(slot.card);
+          const old=slot.card.name; slot.card=st2; slot.evolvedTurn=battle.roundNo;
+          ins.push('🍬 IA usa <b>'+esc(c.name)+'</b>: <b>'+esc(old)+'</b> evoluiu DIRETO pra <b>'+esc(st2.name)+'</b>! <i>(troque a carta física)</i>');
+          used=true; done=true;
+        }
+      }
+    }
+    else if(kind==='iono' && ai.hand.length<=4 && ai.deck.length>3){
+      ai.hand.splice(ai.hand.indexOf(c),1); ai.discard.push(c);
+      const np=battle.pl?battle.pl.prizes.length:0, na=ai.prizes.length;
+      shuffle(ai.hand); ai.deck.push(...ai.hand); ai.hand=ai.deck.splice(0,na);
+      if(battle.mode==='treino'&&battle.pl){ shuffle(battle.pl.hand); battle.pl.deck.push(...battle.pl.hand); battle.pl.hand=battle.pl.deck.splice(0,np); }
+      ins.push('🎤 IA usa <b>'+esc(c.name)+'</b>: as duas mãos foram pro fundo do deck — IA comprou '+na+', você comprou '+np+'.');
+      supporterUsed=true; break;
+    }
+    else if(kind==='judge' && ai.hand.length<=3){
+      ai.hand.splice(ai.hand.indexOf(c),1); ai.discard.push(c);
+      ai.deck.push(...ai.hand); ai.hand=[]; shuffle(ai.deck); ai.hand=ai.deck.splice(0,4);
+      if(battle.mode==='treino'&&battle.pl){ const pl=battle.pl; pl.deck.push(...pl.hand); pl.hand=[]; shuffle(pl.deck); pl.hand=pl.deck.splice(0,4); }
+      ins.push('⚖️ IA usa <b>'+esc(c.name)+'</b>: cada um embaralhou a mão e comprou 4.');
+      supporterUsed=true; break;
+    }
+    else if(kind==='arven'){
+      const isItem=x=>isTrainer(x)&&!isSupporterCard(x)&&!isToolCard(x)&&!isStadiumCard(x);
+      const it=ai.deck.find(isItem), tl=ai.deck.find(isToolCard);
+      if(it||tl){
+        [it,tl].filter(Boolean).forEach(x=>{ ai.deck.splice(ai.deck.indexOf(x),1); ai.hand.push(x); });
+        ai.hand.splice(ai.hand.indexOf(c),1); ai.discard.push(c); shuffle(ai.deck);
+        ins.push('🎒 IA usa <b>'+esc(c.name)+'</b>: busca '+[it,tl].filter(Boolean).map(x=>'<b>'+esc(x.name)+'</b>').join(' e ')+'.');
+        used=true; supporterUsed=true;
+      }
+    }
+    else if(kind==='counterCatcher' && battle.mode==='treino' && battle.pl && ai.prizes.length>battle.pl.prizes.length && battle.pl.bench.length && battle.pl.active){
+      let victim=battle.pl.bench[0];
+      battle.pl.bench.forEach(s=>{ if(s.energies.length<victim.energies.length) victim=s; });
+      battle.pl.bench.splice(battle.pl.bench.indexOf(victim),1);
+      battle.pl.bench.push(battle.pl.active); battle.pl.active=victim;
+      ai.hand.splice(ai.hand.indexOf(c),1); ai.discard.push(c);
+      ins.push('😈 IA usa <b>'+esc(c.name)+'</b> (está atrás nos prêmios) e trouxe seu <b>'+esc(victim.card.name)+'</b> pro Ativo!'); used=true;
+    }
+    else if(kind==='superRod' && ai.deck.length<=12){
+      const alvo=ai.discard.filter(x=>isPokemon(x)||isBasicEnergy(x)).slice(0,3);
+      if(alvo.length){
+        alvo.forEach(x=>{ ai.discard.splice(ai.discard.indexOf(x),1); ai.deck.push(x); });
+        ai.hand.splice(ai.hand.indexOf(c),1); ai.discard.push(c); shuffle(ai.deck);
+        ins.push('🎣 IA usa <b>'+esc(c.name)+'</b>: devolveu '+alvo.length+' carta(s) do descarte pro deck.'); used=true;
+      }
+    }
+    else if(kind==='earthenVessel' && ai.hand.length>=2 && ai.deck.some(isBasicEnergy)){
+      const cost=aiWorstCards(ai,1,c);
+      cost.forEach(x=>{ ai.hand.splice(ai.hand.indexOf(x),1); ai.discard.push(x); });
+      const ergs=ai.deck.filter(isBasicEnergy).slice(0,2);
+      ergs.forEach(x=>{ ai.deck.splice(ai.deck.indexOf(x),1); ai.hand.push(x); });
+      ai.hand.splice(ai.hand.indexOf(c),1); ai.discard.push(c); shuffle(ai.deck);
+      ins.push('🏺 IA usa <b>'+esc(c.name)+'</b>: descarta 1 e busca '+ergs.length+' energia(s) básica(s).'); used=true;
+    }
+    else if(kind==='vipPass' && battle.turnCount===1 && ai.bench.length<5){
+      const basics=ai.deck.filter(isBasicPokemon).slice(0,Math.min(2,5-ai.bench.length));
+      if(basics.length){
+        basics.forEach(x=>{ ai.deck.splice(ai.deck.indexOf(x),1); ai.bench.push(mkSlot(x)); });
+        ai.hand.splice(ai.hand.indexOf(c),1); ai.discard.push(c); shuffle(ai.deck);
+        ins.push('🎫 IA usa <b>'+esc(c.name)+'</b>: coloca '+basics.map(x=>'<b>'+esc(x.name)+'</b>').join(' e ')+' no banco.'); used=true;
+      }
+    }
+    else if(kind==='electricGenerator' && ai.bench.length){
+      const top=ai.deck.slice(0,5);
+      const ligas=top.filter(e=>isBasicEnergy(e)&&/lightning|el[eé]trica/i.test(energyTypeOf(e)+' '+e.name)).slice(0,2);
+      if(ligas.length){
+        ligas.forEach((e,ix)=>{ ai.deck.splice(ai.deck.indexOf(e),1); ai.bench[ix%ai.bench.length].energies.push(e); });
+        ai.hand.splice(ai.hand.indexOf(c),1); ai.discard.push(c); shuffle(ai.deck);
+        ins.push('⚡ IA usa <b>'+esc(c.name)+'</b>: anexou '+ligas.length+' Energia(s) Elétrica(s) no banco. <i>(anexe nas cartas físicas)</i>'); used=true;
+      }
+    }
+    else if(kind==='pokegear'){
+      const sup=ai.deck.slice(0,7).find(isSupporterCard);
+      if(sup){
+        ai.deck.splice(ai.deck.indexOf(sup),1); ai.hand.push(sup);
+        ai.hand.splice(ai.hand.indexOf(c),1); ai.discard.push(c); shuffle(ai.deck);
+        ins.push('📟 IA usa <b>'+esc(c.name)+'</b>: pegou <b>'+esc(sup.name)+'</b> do topo do deck.'); used=true;
+      }
+    }
+    else if(kind==='tool' && ai.active && !ai.active.tool){
+      ai.hand.splice(ai.hand.indexOf(c),1); ai.active.tool=c;
+      if(/bravery charm|amuleto da bravura/i.test(c.name) && isBasicPokemon(ai.active.card)) ai.active.hpBonus=(ai.active.hpBonus||0)+50;
+      ins.push('🔧 IA anexa <b>'+esc(c.name)+'</b> no '+esc(ai.active.card.name)+'.'); used=true;
+    }
+    else if(kind==='stadium' && (!battle.stadium || battle.stadium.card.name!==c.name)){
+      if(battle.stadium){ (battle.stadium.by==='pl'&&battle.pl?battle.pl.discard:ai.discard).push(battle.stadium.card); }
+      ai.hand.splice(ai.hand.indexOf(c),1); battle.stadium={card:c, by:'ai'};
+      ins.push('🏟️ IA joga o Estádio <b>'+esc(c.name)+'</b>: <i>'+esc((c.rules||[]).join(' '))+'</i>'); used=true;
     }
     if(used && kind!=='research'){ /* segue tentando outros itens */ }
   }
@@ -1358,7 +1529,7 @@ function aiExecuteTurn(){
       pA.damage+=final;
       ins.push('⚔️ <b>IA ATACA!</b> '+esc(ai.active.card.name)+' usa <b>'+esc(a.name)+'</b> → <b>'+final+'</b> de dano'+mods+' no seu '+esc(pA.card.name)+'.');
       if(a.text) ins.push('📖 Efeito: <i>'+esc(a.text)+'</i> (aplique com 🛠 se precisar)');
-      const php=parseInt(pA.card.hp)||60;
+      const php=slotMaxHp(pA);
       if(pA.damage>=php){
         const nP=prizeValueOf(pA.card);
         ins.push('☠️ Seu <b>'+esc(pA.card.name)+'</b> foi NOCAUTEADO! IA pega '+nP+' prêmio(s).');
@@ -1427,7 +1598,7 @@ function playerAttack(){
     if(r){ final=Math.max(0,final-30); ins.push('🛡️ Resistência: −30 → <b>'+final+'</b>'); }
   }
   slot.damage+=final;
-  const hp=parseInt(slot.card.hp)||60;
+  const hp=slotMaxHp(slot);
   ins.unshift('🧑 Você atacou a <b>'+esc(slot.card.name)+'</b> da IA: '+final+' de dano (total '+slot.damage+'/'+hp+').');
   $('b-my-dmg').value='';
   if(slot.damage>=hp){
@@ -1508,7 +1679,7 @@ function confirmEndBattle(){
 // MODO TREINAMENTO — eu jogo meu deck digital contra a IA
 // =====================================================================
 let plPending=null; // ação aguardando alvo: {kind, hand}
-function plMenuClear(){ plPending=null; const m=$('b-pl-menu'); if(m) m.innerHTML=''; }
+function plMenuClear(){ plPending=null; plPicker=null; const m=$('b-pl-menu'); if(m) m.innerHTML=''; }
 function plMsg(html){ $('b-pl-menu').innerHTML='<div class="attack-row">'+html+' <button class="btn ghost sm" onclick="plMenuClear()">cancelar</button></div>'; }
 function plStartTurn(){
   if(!battle||!battle.on||battle.mode!=='treino') return;
@@ -1572,11 +1743,12 @@ function plDiscardHand(i){
   battle.pl.hand.splice(i,1); battle.pl.discard.push(c);
   plMenuClear(); saveBattle(); renderBattle();
 }
-function plBeginTarget(kind,i){
-  plPending={kind, hand:i};
+function plBeginTarget(kind,i,amt){
+  plPending={kind, hand:i, amt};
   const msgs={evolve:'clique no SEU Pokémon que vai evoluir', energy:'clique no SEU Pokémon que recebe a energia',
     retreat:'clique no Pokémon do banco que entra no lugar', switch:'clique no Pokémon do banco que vira Ativo',
-    heal30:'clique no SEU Pokémon a curar', boss:'clique no Pokémon do BANCO DA IA que você quer trazer',
+    heal30:'clique no SEU Pokémon a curar'+(amt?' ('+amt+')':''), boss:'clique no Pokémon do BANCO DA IA que você quer trazer',
+    tool:'clique no SEU Pokémon que recebe a ferramenta',
     dmgplus:'clique no Pokémon que recebe +10 de dano', dmgminus:'clique no Pokémon que remove 10 de dano'};
   plMsg('👉 '+msgs[kind]);
 }
@@ -1627,8 +1799,17 @@ function plApplyPending(w, slot){
     pushLog('🧑 Jogada', ['🔁 Troca: <b>'+esc(slot.card.name)+'</b> agora é seu Ativo.']);
   }
   else if(p.kind==='heal30'){
-    slot.damage=Math.max(0,slot.damage-30);
-    pushLog('🧑 Jogada', ['🧪 Curou 30 de dano de <b>'+esc(slot.card.name)+'</b>.']);
+    const amt=p.amt||30;
+    slot.damage=Math.max(0,slot.damage-amt);
+    pushLog('🧑 Jogada', ['🧪 Curou '+amt+' de dano de <b>'+esc(slot.card.name)+'</b>.']);
+  }
+  else if(p.kind==='tool'){
+    if(slot.tool){ toast(slot.card.name+' já tem ferramenta ('+slot.tool.name+')'); return; }
+    const c=pl.hand[p.hand]; if(!c){ plMenuClear(); return; }
+    pl.hand.splice(p.hand,1); slot.tool=c;
+    let extra='';
+    if(/bravery charm|amuleto da bravura/i.test(c.name) && isBasicPokemon(slot.card)){ slot.hpBonus=(slot.hpBonus||0)+50; extra=' (+50 HP!)'; }
+    pushLog('🧑 Jogada', ['🔧 Anexou <b>'+esc(c.name)+'</b> em <b>'+esc(slot.card.name)+'</b>'+extra+'. <i>'+esc((c.rules||[]).join(' '))+'</i>']);
   }
   else if(p.kind==='dmgplus'){ slot.damage+=10; pushLog('🛠 Efeito manual',['+10 dano em '+esc(slot.card.name)+' ('+slot.damage+')']); }
   else if(p.kind==='dmgminus'){ slot.damage=Math.max(0,slot.damage-10); pushLog('🛠 Efeito manual',['−10 dano em '+esc(slot.card.name)+' ('+slot.damage+')']); }
@@ -1649,7 +1830,7 @@ function aiSlotClick(i){
     if(plPending.kind==='dmgplus') slot.damage+=10; else slot.damage=Math.max(0,slot.damage-10);
     pushLog('🛠 Efeito manual',[(plPending.kind==='dmgplus'?'+':'−')+'10 dano em '+esc(slot.card.name)+' da IA ('+slot.damage+')']);
     plMenuClear(); saveBattle();
-    const hp=parseInt(slot.card.hp)||60;
+    const hp=slotMaxHp(slot);
     if(slot===battle.ai.active && slot.damage>=hp){ koAiActive([]); }
     renderBattle();
   }
@@ -1711,7 +1892,7 @@ function plDoAttack(ix){
   const ins=['⚔️ <b>'+esc(s.card.name)+'</b> usou <b>'+esc(a.name)+'</b> → <b>'+final+'</b> de dano'+mods+' na '+esc(tgt.card.name)+' da IA.'];
   if(a.text) ins.push('📖 Efeito: <i>'+esc(a.text)+'</i> (aplique com 🛠 se precisar)');
   tgt.damage+=final;
-  const hp=parseInt(tgt.card.hp)||60;
+  const hp=slotMaxHp(tgt);
   let ended=false;
   if(tgt.damage>=hp){ ended=!!koAiActive(ins); }
   if(!ended){ pushLog('🧑 Seu ataque', ins); }
@@ -1721,66 +1902,355 @@ function plDoAttack(ix){
     saveBattle(); renderBattle();
   }
 }
+// ---------- MOTOR DE EFEITOS DE TREINADOR ----------
+// picker genérico: escolher min..max cartas de uma lista (mão/deck/descarte/topo)
+let plPicker=null; // transitório (não vai pro save): {title,note,cards,min,max,chosen,onDone,onCancel}
+function plOpenPicker(title, cards, min, max, onDone, note, onCancel){
+  plPicker={title, note, cards, min, max, chosen:[], onDone, onCancel};
+  plRenderPicker();
+}
+function plRenderPicker(){
+  const p=plPicker; if(!p) return;
+  const canOk = p.chosen.length>=p.min && p.chosen.length<=p.max;
+  $('b-pl-menu').innerHTML='<div class="attack-row"><b>'+p.title+'</b> <span class="muted">('+
+    (p.min===p.max? 'escolha '+p.min : 'escolha '+p.min+' a '+p.max)+' · marcadas: '+p.chosen.length+')</span>'+
+    (p.note?'<div class="muted" style="font-size:.72rem;margin:2px 0">'+p.note+'</div>':'')+
+    '<div style="margin:4px 0">'+p.cards.map((c,ix)=>{
+      const on=p.chosen.includes(ix);
+      return '<span style="white-space:nowrap;display:inline-block;margin:2px"><button class="btn sm'+(on?'':' ghost')+'"'+(on?' style="outline:2px solid var(--accent)"':'')+' onclick="plPickToggle('+ix+')">'+(on?'✅ ':'')+esc(c.name)+'</button><button class="btn ghost sm" style="padding:2px 6px" onclick="plPickZoom('+ix+')">🔍</button></span>';
+    }).join('')+'</div>'+
+    '<button class="btn sm" '+(canOk?'onclick="plPickDone()"':'disabled style="opacity:.5"')+'>Confirmar ✔</button> '+
+    '<button class="btn ghost sm" onclick="plPickCancel()">cancelar</button></div>';
+}
+function plPickToggle(ix){
+  const p=plPicker; if(!p) return;
+  const k=p.chosen.indexOf(ix);
+  if(k>=0) p.chosen.splice(k,1);
+  else{ if(p.chosen.length>=p.max){ toast('Máximo: '+p.max); return; } p.chosen.push(ix); }
+  plRenderPicker();
+}
+function plPickZoom(ix){ if(plPicker) openCardModal(plPicker.cards[ix]); }
+function plPickDone(){
+  const p=plPicker; if(!p) return;
+  if(p.chosen.length<p.min){ toast('Escolha pelo menos '+p.min); return; }
+  const cards=p.chosen.map(ix=>p.cards[ix]);
+  plPicker=null; plMenuClear();
+  p.onDone(cards);
+}
+function plPickCancel(){ const p=plPicker; plPicker=null; plMenuClear(); if(p&&p.onCancel) p.onCancel(); saveBattle(); renderBattle(); }
+function takeFrom(arr, card){ const ix=arr.indexOf(card); if(ix>=0) arr.splice(ix,1); return card; }
+function plSpendTrainer(c, sup){ const pl=battle.pl; takeFrom(pl.hand,c); pl.discard.push(c); if(sup) battle.plSupporterUsed=true; }
+// busca no deck com escolha visual (dest: 'hand' | 'bench')
+function plDeckSearch(srcName, filter, max, dest, desc, after){
+  const pl=battle.pl;
+  const found=pl.deck.filter(filter).slice().sort((a,b)=>a.name.localeCompare(b.name));
+  if(!found.length){
+    shuffle(pl.deck);
+    pushLog('🧑 Jogada', ['🔍 '+esc(srcName)+': não achou '+desc+' no deck (embaralhado).']);
+    saveBattle(); renderBattle(); if(after) after([]); return;
+  }
+  plOpenPicker('🔍 '+esc(srcName)+' — '+desc, found, 0, max, chosen=>{
+    chosen.forEach(x=>{
+      takeFrom(pl.deck,x);
+      if(dest==='bench' && pl.bench.length<5) pl.bench.push(mkSlot(x)); else pl.hand.push(x);
+    });
+    shuffle(pl.deck);
+    pushLog('🧑 Jogada', [chosen.length? '🔍 '+esc(srcName)+': pegou <b>'+chosen.map(x=>esc(x.name)).join(', ')+'</b>'+(dest==='bench'?' (banco)':' (mão)')+'. Deck embaralhado.' : '🔍 '+esc(srcName)+': não pegou nada (deck embaralhado).']);
+    saveBattle(); renderBattle(); if(after) after(chosen);
+  }, 'confirme com 0 marcadas se não quiser pegar', ()=>{ shuffle(pl.deck); });
+}
 function plUseTrainer(i){
   const c=battle.pl.hand[i]; if(!c) return;
   const pl=battle.pl;
   const kind=trainerKind(c);
-  const isSupporter=(c.subtypes||[]).includes('Supporter')||['research','draw3','boss'].includes(kind);
-  if(isSupporter && battle.plSupporterUsed){ toast('Já usou um Apoiador neste turno'); return; }
-  if(kind==='potion'){ pl.hand.splice(i,1); pl.discard.push(c); plBeginTarget('heal30',-1); }
+  const sup=isSupporterish(c);
+  if(sup && battle.plSupporterUsed){ toast('Já usou um Apoiador neste turno'); return; }
+  const nm=esc(c.name);
+  if(kind==='tool'){ plPending={kind:'tool', hand:i}; plMsg('🔧 <b>'+nm+'</b>: clique no SEU Pokémon que recebe a ferramenta'); return; }
+  if(kind==='stadium'){
+    const old=battle.stadium;
+    if(old && old.card.name===c.name){ toast('Já existe um '+c.name+' em jogo'); return; }
+    if(old){ (old.by==='pl'?pl.discard:battle.ai.discard).push(old.card); }
+    takeFrom(pl.hand,c); battle.stadium={card:c, by:'pl'};
+    pushLog('🧑 Jogada', ['🏟️ Você jogou o Estádio <b>'+nm+'</b>.'+(old?' (descartou '+esc(old.card.name)+')':''), '📖 <i>'+esc((c.rules||[]).join(' '))+'</i> — vale pros DOIS lados; aplique o efeito quando se aplicar (clique nele pra reler).']);
+    plMenuClear(); saveBattle(); renderBattle(); return;
+  }
+  if(kind==='potion'){ plSpendTrainer(c,false); plBeginTarget('heal30',-1,30); }
   else if(kind==='research'){
     if(!confirm(c.name+': descartar a mão inteira e comprar 7?')) return;
-    pl.hand.splice(i,1); pl.discard.push(c);
+    plSpendTrainer(c,true);
     pl.discard.push(...pl.hand); pl.hand=pl.deck.splice(0,7);
-    battle.plSupporterUsed=true;
-    pushLog('🧑 Jogada', ['👩‍🔬 '+esc(c.name)+': mão descartada, 7 compradas.']);
+    pushLog('🧑 Jogada', ['👩‍🔬 '+nm+': mão descartada, 7 compradas.']);
   }
   else if(kind==='draw3'){
-    pl.hand.splice(i,1); pl.discard.push(c);
+    plSpendTrainer(c,true);
     pl.hand.push(...pl.deck.splice(0,3));
-    battle.plSupporterUsed=true;
-    pushLog('🧑 Jogada', ['🙋 '+esc(c.name)+': comprou 3 cartas.']);
+    pushLog('🧑 Jogada', ['🙋 '+nm+': comprou 3 cartas.']);
   }
-  else if(kind==='switch'){ pl.hand.splice(i,1); pl.discard.push(c); plBeginTarget('switch',-1); }
-  else if(kind==='boss'){
-    if(!battle.ai.bench.length){ toast('A IA não tem banco'); return; }
-    pl.hand.splice(i,1); pl.discard.push(c); battle.plSupporterUsed=true;
-    plBeginTarget('boss',-1);
+  else if(kind==='iono'){
+    plSpendTrainer(c,true);
+    const ai=battle.ai, np=pl.prizes.length, na=ai.prizes.length;
+    shuffle(pl.hand); pl.deck.push(...pl.hand); pl.hand=pl.deck.splice(0,np);
+    shuffle(ai.hand); ai.deck.push(...ai.hand); ai.hand=ai.deck.splice(0,na);
+    pushLog('🧑 Jogada', ['🎤 '+nm+': as duas mãos foram pro FUNDO do deck. Você comprou '+np+' (seus prêmios), a IA comprou '+na+'.']);
+  }
+  else if(kind==='judge'){
+    plSpendTrainer(c,true);
+    const ai=battle.ai;
+    pl.deck.push(...pl.hand); pl.hand=[]; shuffle(pl.deck); pl.hand=pl.deck.splice(0,4);
+    ai.deck.push(...ai.hand); ai.hand=[]; shuffle(ai.deck); ai.hand=ai.deck.splice(0,4);
+    pushLog('🧑 Jogada', ['⚖️ '+nm+': cada um embaralhou a mão no deck e comprou 4.']);
+  }
+  else if(kind==='arven'){
+    plSpendTrainer(c,true);
+    const isItem=x=>isTrainer(x)&&!isSupporterCard(x)&&!isToolCard(x)&&!isStadiumCard(x);
+    plDeckSearch(c.name, isItem, 1, 'hand', '1 carta de Item', ()=>{
+      plDeckSearch(c.name, isToolCard, 1, 'hand', '1 Ferramenta');
+    });
+    return;
+  }
+  else if(kind==='ultraBall'){
+    if(pl.hand.length<3){ toast('Precisa de mais 2 cartas na mão pra descartar'); return; }
+    const others=pl.hand.filter(x=>x!==c);
+    plOpenPicker('🗑️ '+nm+' — descarte 2 cartas da mão', others, 2, 2, chosen=>{
+      chosen.forEach(x=>{ takeFrom(pl.hand,x); pl.discard.push(x); });
+      plSpendTrainer(c,false);
+      pushLog('🧑 Jogada', ['🎓 '+nm+': descartou <b>'+chosen.map(x=>esc(x.name)).join('</b> e <b>')+'</b>.']);
+      plDeckSearch(c.name, isPokemon, 1, 'hand', 'qualquer Pokémon');
+    });
+    return;
+  }
+  else if(kind==='quickBall'){
+    if(pl.hand.length<2){ toast('Precisa de mais 1 carta na mão pra descartar'); return; }
+    const others=pl.hand.filter(x=>x!==c);
+    plOpenPicker('🗑️ '+nm+' — descarte 1 carta da mão', others, 1, 1, chosen=>{
+      chosen.forEach(x=>{ takeFrom(pl.hand,x); pl.discard.push(x); });
+      plSpendTrainer(c,false);
+      pushLog('🧑 Jogada', ['🎓 '+nm+': descartou <b>'+esc(chosen[0].name)+'</b>.']);
+      plDeckSearch(c.name, isBasicPokemon, 1, 'hand', 'um Pokémon Básico');
+    });
+    return;
+  }
+  else if(kind==='greatBall'){
+    plSpendTrainer(c,false);
+    const top=pl.deck.slice(0,7), pk=top.filter(isPokemon);
+    if(!pk.length){
+      shuffle(pl.deck);
+      pushLog('🧑 Jogada', ['🎓 '+nm+': olhou as 7 do topo ('+top.map(x=>esc(x.name)).join(', ')+') — nenhum Pokémon. Deck embaralhado.']);
+    } else {
+      plOpenPicker('👀 '+nm+' — Pokémon nas 7 do topo', pk, 0, 1, chosen=>{
+        chosen.forEach(x=>{ takeFrom(pl.deck,x); pl.hand.push(x); });
+        shuffle(pl.deck);
+        pushLog('🧑 Jogada', ['🎓 '+nm+': '+(chosen.length?'pegou <b>'+esc(chosen[0].name)+'</b> pra mão.':'não pegou nada.')+' Deck embaralhado.']);
+        saveBattle(); renderBattle();
+      }, 'as outras voltam embaralhadas', ()=>{ shuffle(pl.deck); });
+      saveBattle(); renderBattle(); return;
+    }
   }
   else if(kind==='searchBasic'){
-    const basics=pl.deck.filter(isBasicPokemon);
-    if(!basics.length){ toast('Nenhum Básico no deck'); return; }
     if(pl.bench.length>=5){ toast('Banco cheio'); return; }
-    const names=[...new Set(basics.map(b=>b.name))].slice(0,12);
-    $('b-pl-menu').innerHTML='<div class="attack-row">🔮 '+esc(c.name)+' — escolha o Básico: '+
-      names.map(n=>'<button class="btn sm" style="margin:2px" onclick="plSearchPick('+i+',\''+n.replace(/'/g,"\\'")+'\')">'+esc(n)+'</button>').join('')+
-      '<button class="btn ghost sm" onclick="plMenuClear()">cancelar</button></div>';
+    plSpendTrainer(c,false);
+    plDeckSearch(c.name, isBasicPokemon, 1, 'bench', 'um Básico pro banco');
+    return;
+  }
+  else if(kind==='levelBall'){
+    plSpendTrainer(c,false);
+    plDeckSearch(c.name, x=>isPokemon(x)&&(parseInt(x.hp)||999)<=90, 1, 'hand', 'Pokémon com HP até 90');
+    return;
+  }
+  else if(kind==='rareCandy'){
+    if(battle.plTurnNo<=1){ toast('Não dá pra evoluir no seu 1º turno'); return; }
+    const st2s=pl.hand.filter(isStage2);
+    if(!st2s.length){ toast('Nenhum Estágio 2 na sua mão'); return; }
+    plOpenPicker('🍬 '+nm+' — qual Estágio 2 vai entrar?', st2s, 1, 1, chosen=>{
+      const st2=chosen[0];
+      const all=[...pl.deck,...pl.hand,...pl.discard,...pl.prizes];
+      const mid=all.find(x=>isPokemon(x)&&x.name===st2.evolvesFrom);
+      const basicName=mid?mid.evolvesFrom:null;
+      const slots=[pl.active,...pl.bench].filter(Boolean).filter(s=>
+        isBasicPokemon(s.card) && s.playedTurn<battle.roundNo && s.evolvedTurn!==battle.roundNo &&
+        (!basicName || s.card.name===basicName));
+      if(!slots.length){ toast('Nenhum Básico seu pode receber essa evolução agora'); return; }
+      plOpenPicker('🍬 evoluir qual Básico pra '+esc(st2.name)+'?', slots.map(s=>s.card), 1, 1, ch2=>{
+        const slot=slots[slots.map(s=>s.card).indexOf(ch2[0])];
+        takeFrom(pl.hand,st2); plSpendTrainer(c,false);
+        pl.discard.push(slot.card);
+        const old=slot.card.name; slot.card=st2; slot.evolvedTurn=battle.roundNo;
+        pushLog('🧑 Jogada', ['🍬 '+nm+': <b>'+esc(old)+'</b> evoluiu DIRETO pra <b>'+esc(st2.name)+'</b>!']);
+        saveBattle(); renderBattle();
+      });
+    });
+    return;
+  }
+  else if(kind==='switch'){ plSpendTrainer(c,false); plBeginTarget('switch',-1); }
+  else if(kind==='escapeRope'){
+    plSpendTrainer(c,false);
+    const ai=battle.ai;
+    if(ai.bench.length && ai.active){
+      const inN=ai.bench.slice().sort((a,b)=>b.energies.length-a.energies.length)[0];
+      ai.bench.splice(ai.bench.indexOf(inN),1); ai.bench.push(ai.active); ai.active=inN;
+      pushLog('🧑 Jogada', ['🪢 '+nm+': a IA recuou e promoveu <b>'+esc(inN.card.name)+'</b>.']);
+    }
+    if(pl.bench.length){ plBeginTarget('switch',-1); }
+  }
+  else if(kind==='boss'){
+    if(!battle.ai.bench.length){ toast('A IA não tem banco'); return; }
+    plSpendTrainer(c,true);
+    plBeginTarget('boss',-1);
+  }
+  else if(kind==='counterCatcher'){
+    if(pl.prizes.length<=battle.ai.prizes.length){ toast('Só quando você está ATRÁS nos prêmios'); return; }
+    if(!battle.ai.bench.length){ toast('A IA não tem banco'); return; }
+    plSpendTrainer(c,false);
+    plBeginTarget('boss',-1);
   }
   else if(kind==='energyRetrieval'){
-    const ergs=pl.discard.filter(isBasicEnergy).slice(0,2);
+    const ergs=pl.discard.filter(isBasicEnergy);
     if(!ergs.length){ toast('Nenhuma energia básica no descarte'); return; }
-    ergs.forEach(e=>{ pl.discard.splice(pl.discard.indexOf(e),1); pl.hand.push(e); });
-    pl.hand.splice(pl.hand.indexOf(c),1); pl.discard.push(c);
-    pushLog('🧑 Jogada', ['♻️ '+esc(c.name)+': recuperou '+ergs.length+' energia(s) do descarte.']);
+    plOpenPicker('♻️ '+nm+' — energias do descarte pra mão', ergs, 1, 2, chosen=>{
+      chosen.forEach(e=>{ takeFrom(pl.discard,e); pl.hand.push(e); });
+      plSpendTrainer(c,false);
+      pushLog('🧑 Jogada', ['♻️ '+nm+': recuperou '+chosen.length+' energia(s) do descarte.']);
+      saveBattle(); renderBattle();
+    });
+    return;
   }
-  else{
-    pl.hand.splice(i,1); pl.discard.push(c);
-    pushLog('🧑 Jogada', ['🎓 Você usou <b>'+esc(c.name)+'</b>. Efeito: <i>'+esc((c.rules||['(veja a carta)']).join(' '))+'</i> — aplique com as ferramentas 🛠 (comprar carta, ±10 dano, etc).']);
+  else if(kind==='superRod'){
+    const alvo=pl.discard.filter(x=>isPokemon(x)||isBasicEnergy(x));
+    if(!alvo.length){ toast('Nada elegível no descarte'); return; }
+    plOpenPicker('🎣 '+nm+' — devolver ao deck (Pokémon/energia básica)', alvo, 1, 3, chosen=>{
+      chosen.forEach(x=>{ takeFrom(pl.discard,x); pl.deck.push(x); });
+      plSpendTrainer(c,false); shuffle(pl.deck);
+      pushLog('🧑 Jogada', ['🎣 '+nm+': devolveu <b>'+chosen.map(x=>esc(x.name)).join(', ')+'</b> pro deck (embaralhado).']);
+      saveBattle(); renderBattle();
+    });
+    return;
   }
-  if(kind!=='potion'&&kind!=='switch'&&kind!=='boss'&&kind!=='searchBasic') plMenuClear();
+  else if(kind==='earthenVessel'){
+    if(pl.hand.length<2){ toast('Precisa de mais 1 carta na mão pra descartar'); return; }
+    const others=pl.hand.filter(x=>x!==c);
+    plOpenPicker('🗑️ '+nm+' — descarte 1 carta da mão', others, 1, 1, chosen=>{
+      chosen.forEach(x=>{ takeFrom(pl.hand,x); pl.discard.push(x); });
+      plSpendTrainer(c,false);
+      pushLog('🧑 Jogada', ['🏺 '+nm+': descartou <b>'+esc(chosen[0].name)+'</b>.']);
+      plDeckSearch(c.name, isBasicEnergy, 2, 'hand', 'até 2 energias básicas');
+    });
+    return;
+  }
+  else if(kind==='vipPass'){
+    if(battle.plTurnNo!==1){ toast('Só funciona no seu 1º turno'); return; }
+    if(pl.bench.length>=5){ toast('Banco cheio'); return; }
+    plSpendTrainer(c,false);
+    plDeckSearch(c.name, isBasicPokemon, Math.min(2,5-pl.bench.length), 'bench', 'até 2 Básicos pro banco');
+    return;
+  }
+  else if(kind==='electricGenerator'){
+    plSpendTrainer(c,false);
+    const top=pl.deck.slice(0,5);
+    const ligas=top.filter(e=>isBasicEnergy(e)&&/lightning|el[eé]trica/i.test(energyTypeOf(e)+' '+e.name));
+    if(!ligas.length || !pl.bench.length){
+      shuffle(pl.deck);
+      pushLog('🧑 Jogada', ['⚡ '+nm+': olhou as 5 do topo — '+(pl.bench.length?'nenhuma Energia Elétrica básica':'sem banco pra anexar')+'. Deck embaralhado.']);
+    } else {
+      plOpenPicker('⚡ '+nm+' — Elétricas nas 5 do topo', ligas, 0, 2, chosen=>{
+        const attach=(list)=>{
+          if(!list.length){ shuffle(pl.deck); saveBattle(); renderBattle(); return; }
+          const e=list[0];
+          plOpenPicker('⚡ anexar '+esc(e.name)+' em qual Pokémon do BANCO?', pl.bench.map(s=>s.card), 1, 1, ch2=>{
+            const slot=pl.bench[pl.bench.map(s=>s.card).indexOf(ch2[0])];
+            takeFrom(pl.deck,e); slot.energies.push(e);
+            pushLog('🧑 Jogada', ['⚡ '+nm+': anexou <b>'+esc(e.name)+'</b> em <b>'+esc(slot.card.name)+'</b>.']);
+            attach(list.slice(1));
+          });
+        };
+        attach(chosen);
+      }, 'as outras voltam embaralhadas', ()=>{ shuffle(pl.deck); });
+      saveBattle(); renderBattle(); return;
+    }
+  }
+  else if(kind==='pokegear'){
+    plSpendTrainer(c,false);
+    const top=pl.deck.slice(0,7), sups=top.filter(isSupporterCard);
+    if(!sups.length){
+      shuffle(pl.deck);
+      pushLog('🧑 Jogada', ['📟 '+nm+': olhou as 7 do topo — nenhum Apoiador. Deck embaralhado.']);
+    } else {
+      plOpenPicker('📟 '+nm+' — Apoiadores nas 7 do topo', sups, 0, 1, chosen=>{
+        chosen.forEach(x=>{ takeFrom(pl.deck,x); pl.hand.push(x); });
+        shuffle(pl.deck);
+        pushLog('🧑 Jogada', ['📟 '+nm+': '+(chosen.length?'pegou <b>'+esc(chosen[0].name)+'</b>.':'não pegou nada.')+' Deck embaralhado.']);
+        saveBattle(); renderBattle();
+      }, 'as outras voltam embaralhadas', ()=>{ shuffle(pl.deck); });
+      saveBattle(); renderBattle(); return;
+    }
+  }
+  else{ plTrainerSmart(i,c,sup); return; }
+  if(kind!=='potion'&&kind!=='switch'&&kind!=='escapeRope'&&kind!=='boss'&&kind!=='counterCatcher'&&kind!=='tool') plMenuClear();
   saveBattle(); renderBattle();
 }
-function plSearchPick(trainerIdx, name){
+// carta desconhecida: interpreta o texto (PT/EN) e executa; senão, caixa assistida
+function plTrainerSmart(i,c,sup){
   const pl=battle.pl;
-  const di=pl.deck.findIndex(x=>x.name===name && isBasicPokemon(x));
-  if(di<0){ plMenuClear(); return; }
-  const found=pl.deck.splice(di,1)[0];
-  pl.bench.push(mkSlot(found));
-  const t=pl.hand[trainerIdx];
-  if(t){ pl.hand.splice(trainerIdx,1); pl.discard.push(t); }
-  shuffle(pl.deck);
-  pushLog('🧑 Jogada', ['🔮 Você buscou <b>'+esc(found.name)+'</b> no deck e colocou no banco.']);
-  plMenuClear(); saveBattle(); renderBattle();
+  const txt=((c.rules||[]).join(' ')||'').toLowerCase();
+  const nm=esc(c.name);
+  const num=s=>({uma:1,duas:2,'três':3,tres:3,quatro:4,cinco:5,seis:6,sete:7,one:1,two:2,three:3,four:4,five:5,six:6,seven:7}[s]||parseInt(s)||1);
+  let m;
+  if(m=txt.match(/(?:compre|comprar|draw)\s+(\d+|uma|duas|tr[eê]s|quatro|cinco|seis|sete)\s+cartas?/)){
+    const n=num(m[1]);
+    plSpendTrainer(c,sup);
+    pl.hand.push(...pl.deck.splice(0,n));
+    pushLog('🧑 Jogada', ['🎓 '+nm+': comprou '+n+' carta(s). <i>('+esc((c.rules||[]).join(' '))+')</i>']);
+    plMenuClear(); saveBattle(); renderBattle(); return;
+  }
+  if(m=txt.match(/(?:cure|curar|heal)\s+(\d+)/)){
+    plSpendTrainer(c,sup);
+    plBeginTarget('heal30',-1,parseInt(m[1]));
+    saveBattle(); renderBattle(); return;
+  }
+  if(/(?:procure|search).*(?:baralho|deck)/.test(txt)){
+    let filter=()=>true, desc='qualquer carta', dest='hand';
+    if(/pok[eé]mon b[aá]sico|basic pok[eé]mon/.test(txt)){ filter=isBasicPokemon; desc='Pokémon Básico'; }
+    else if(/pok[eé]mon/.test(txt)){ filter=isPokemon; desc='Pokémon'; }
+    else if(/energia b[aá]sica|basic energy/.test(txt)){ filter=isBasicEnergy; desc='energia básica'; }
+    else if(/energia|energy/.test(txt)){ filter=isEnergy; desc='energia'; }
+    else if(/apoiador|supporter/.test(txt)){ filter=isSupporterCard; desc='Apoiador'; }
+    else if(/treinador|trainer/.test(txt)){ filter=isTrainer; desc='carta de Treinador'; }
+    const mm=txt.match(/at[eé]\s+(\d+|duas|tr[eê]s)|up to\s+(\d+)/);
+    const max=mm?num(mm[1]||mm[2]):1;
+    if(/banco|bench/.test(txt) && (filter===isBasicPokemon)) dest='bench';
+    const custo=txt.match(/descart(?:e|ar)\s+(?:outras?\s+)?(\d+|uma|duas)\s+cartas?\s+da\s+(?:sua\s+)?m[aã]o|discard\s+(?:another\s+)?(\d+|a)\s+cards?\s+from\s+your\s+hand/);
+    const run=()=>{ plSpendTrainer(c,sup); plDeckSearch(c.name, filter, max, dest, desc+' (até '+max+')'); };
+    if(custo){
+      const nd=num(custo[1]||custo[2]);
+      if(pl.hand.length<nd+1){ toast('Precisa de mais '+nd+' carta(s) na mão pra descartar'); return; }
+      plOpenPicker('🗑️ '+nm+' — descarte '+nd+' carta(s) da mão', pl.hand.filter(x=>x!==c), nd, nd, chosen=>{
+        chosen.forEach(x=>{ takeFrom(pl.hand,x); pl.discard.push(x); });
+        run();
+      });
+    } else run();
+    return;
+  }
+  // caixa assistida: mostra o efeito e dá as ações na mão
+  plSpendTrainer(c,sup);
+  pushLog('🧑 Jogada', ['🎓 Você usou <b>'+nm+'</b>. Efeito: <i>'+esc((c.rules||['(veja a carta)']).join(' '))+'</i>',
+    '⚙️ Esse efeito não é automático — use os botões que apareceram no menu pra aplicar.']);
+  $('b-pl-menu').innerHTML='<div class="attack-row"><b>'+nm+'</b> — aplicar efeito: '+
+    '<button class="btn sm" style="margin:2px" onclick="plDraw1()">🃏 Comprar 1</button>'+
+    '<button class="btn sm" style="margin:2px" onclick="plManualDeckSearch()">🔍 Buscar no deck</button>'+
+    '<button class="btn sm" style="margin:2px" onclick="plManualDiscardGet()">♻️ Pegar do descarte</button>'+
+    '<button class="btn sm" style="margin:2px" onclick="plBeginTarget(\'heal30\',-1,30)">🧪 Curar 30</button>'+
+    '<button class="btn ghost sm" onclick="plMenuClear()">fechar</button></div>';
+  saveBattle(); renderBattle();
+}
+function plManualDeckSearch(){ if(!battle||!battle.plTurnActive){ toast('Só no seu turno'); return; } plDeckSearch('Busca manual', ()=>true, 1, 'hand', 'qualquer carta'); }
+function plManualDiscardGet(){
+  const pl=battle.pl;
+  if(!pl.discard.length){ toast('Descarte vazio'); return; }
+  plOpenPicker('♻️ pegar do descarte pra mão', pl.discard.slice(), 1, 1, chosen=>{
+    chosen.forEach(x=>{ takeFrom(pl.discard,x); pl.hand.push(x); });
+    pushLog('🛠 Efeito manual', ['♻️ Pegou <b>'+esc(chosen[0].name)+'</b> do descarte.']);
+    saveBattle(); renderBattle();
+  });
 }
 function coachTips(){
   const tips=[], pl=battle.pl, ai=battle.ai;
@@ -1788,7 +2258,7 @@ function coachTips(){
   const s=pl.active;
   // 1. dá pra dar nocaute?
   if(s && ai.active){
-    const rem=(parseInt(ai.active.card.hp)||60)-ai.active.damage;
+    const rem=slotMaxHp(ai.active)-ai.active.damage;
     const myType=s.card.types?s.card.types[0]:'Colorless';
     (s.card.attacks||[]).forEach(a=>{
       if(!canPay(a.cost,s)) return;
@@ -1803,7 +2273,7 @@ function coachTips(){
     const myWeak=(s.card.weaknesses&&s.card.weaknesses[0]&&s.card.weaknesses[0].type)||null;
     const pick=bestAttack(ai.active, myWeak, null);
     if(pick && pick.attack){
-      const remMe=(parseInt(s.card.hp)||60)-s.damage;
+      const remMe=slotMaxHp(s)-s.damage;
       if(pick.dmg>=remMe) tips.push('⚠️ CUIDADO: o '+esc(ai.active.card.name)+' pode nocautear seu '+esc(s.card.name)+' no próximo turno ('+pick.dmg+' vs '+remMe+' HP). Recuar ou dar nocaute antes?');
     }
   }
@@ -1854,7 +2324,7 @@ function renderPl(){
 
 // ---------- render batalha ----------
 function slotHtml(slot, isActive, click){
-  const hp=parseInt(slot.card.hp)||60;
+  const hp=slotMaxHp(slot);
   const rem=Math.max(0,hp-slot.damage);
   const pct=rem/hp*100;
   const cls=pct<=25?'low':(pct<=55?'mid':'');
@@ -1865,6 +2335,7 @@ function slotHtml(slot, isActive, click){
     '<div style="font-weight:700;margin-top:4px">'+esc(slot.card.name)+'</div>'+
     '<div class="hpbar"><div class="'+cls+'" style="width:'+pct+'%"></div></div>'+
     '<div class="muted">'+rem+'/'+hp+' HP'+(slot.damage?' ('+slot.damage+' dano)':'')+'</div>'+
+    (slot.tool?'<div class="muted" style="font-size:.6rem">🔧 '+esc(slot.tool.name)+'</div>':'')+
     '<div class="energy-dots">'+slot.energies.map(e=>tIcon(energyTypeOf(e))).join('')+'</div>'+
   '</div>';
 }
@@ -1878,6 +2349,11 @@ function renderBattle(){
   $('b-turncount').textContent=battle.turnCount;
   const treino = battle.mode==='treino';
   let bh='';
+  if(battle.stadium) bh+='<div class="pkm-slot" style="cursor:pointer" onclick="openCardModal(battle.stadium.card)">'+
+    '<div style="font-weight:800;color:var(--accent);margin-bottom:3px">🏟️ ESTÁDIO</div>'+
+    (cardImg(battle.stadium.card)?'<img src="'+cardImg(battle.stadium.card)+'">':'')+
+    '<div style="font-weight:700;margin-top:4px">'+esc(battle.stadium.card.name)+'</div>'+
+    '<div class="muted" style="font-size:.6rem">vale pros 2 lados — toque pra ler</div></div>';
   if(battle.ai.active) bh+=slotHtml(battle.ai.active,true, treino?'aiSlotClick(\'A\')':null);
   battle.ai.bench.forEach((s,i)=>bh+=slotHtml(s,false, treino?'aiSlotClick('+i+')':null));
   $('b-ai-board').innerHTML=bh||'<p class="muted">— sem Pokémon em jogo —</p>';
@@ -2759,8 +3235,8 @@ async function testProfessor(){
 }
 function slotBrief(s){
   if(!s) return 'nenhum';
-  const hp=parseInt(s.card.hp)||60;
-  return s.card.name+' ('+(hp-s.damage)+'/'+hp+' HP, '+s.energies.length+' energias)';
+  const hp=slotMaxHp(s);
+  return s.card.name+' ('+(hp-s.damage)+'/'+hp+' HP, '+s.energies.length+' energias'+(s.tool?', ferramenta: '+s.tool.name:'')+')';
 }
 async function professorBattle(){
   if(!battle||!battle.on){ toast('Inicie uma batalha primeiro'); return; }
