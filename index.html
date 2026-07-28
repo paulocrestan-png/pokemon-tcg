@@ -396,7 +396,16 @@
   </div>
   <div class="card-panel">
     <h2>🎓 Professor de Estratégia (IA Claude — opcional)</h2>
-    <p class="muted" style="margin-bottom:10px">Conecte uma chave da API da Anthropic e desbloqueie o <b>Professor</b>: uma IA de verdade que estuda seus decks, entende contra quem você está lutando e te aconselha em nível profissional durante a batalha. A chave fica salva só neste aparelho. Cada consulta custa centavos (~R$ 0,20). Crie a sua em <b>console.anthropic.com</b> → API Keys.</p>
+    <p class="muted" style="margin-bottom:10px">O <b>Professor</b> é uma IA de verdade que estuda seus decks, entende contra quem você está lutando e te aconselha em nível profissional. Dois jeitos de ligar (se os dois estiverem configurados, o servidor Max tem prioridade):</p>
+    <div class="help-box" style="margin-bottom:10px">
+      <b>Opção A — 🖥️ Servidor local (Plano Max, sem custo extra):</b> no PC com Claude Code logado, dê 2 cliques em <b>INICIAR_PROFESSOR_MAX.bat</b> (está na pasta do projeto) e deixe a janela aberta. Preencha a URL abaixo (padrão já certo).
+    </div>
+    <div class="row" style="margin-bottom:8px">
+      <input id="ak-server" placeholder="URL do servidor Max (ex.: http://localhost:8092)" style="flex:1; min-width:240px" onchange="saveApiKey()">
+    </div>
+    <div class="help-box" style="margin-bottom:10px">
+      <b>Opção B — 🔑 Chave da API</b> (paga por uso, ~R$ 0,20/consulta; funciona em qualquer aparelho): crie em <b>console.anthropic.com</b> → API Keys.
+    </div>
     <div class="row">
       <input id="ak-key" type="password" placeholder="sk-ant-api..." style="flex:1; min-width:220px" onchange="saveApiKey()">
       <button class="btn sm" onclick="testProfessor()">🔌 Testar conexão</button>
@@ -2667,12 +2676,37 @@ function matchupBriefing(myD, aiD){
 // 🎓 PROFESSOR — conselheiro profissional via API Claude (opcional)
 // =====================================================================
 LS.akey='ptcg_anthropic_key';
+LS.aserver='ptcg_professor_server';
 function getApiKey(){ return load(LS.akey,''); }
-function saveApiKey(){ save(LS.akey, $('ak-key').value.trim()); toast('🔑 Chave salva neste aparelho'); }
+function getProfServer(){ return load(LS.aserver,''); }
+function saveApiKey(){
+  save(LS.akey, $('ak-key').value.trim());
+  save(LS.aserver, $('ak-server').value.trim().replace(/\/$/,''));
+  toast('💾 Configuração do Professor salva');
+}
 const PROF_SYSTEM = 'Você é um treinador profissional de Pokémon TCG dando coaching ao vivo num app (formato casual com regras principais: fraqueza ×2, resistência −30, 1 energia/turno, 1 apoiador/turno, ex/V valem 2 prêmios e VMAX/VSTAR valem 3). Responda SEMPRE em português do Brasil, direto e didático, em no máximo 150 palavras, com no máximo 3 recomendações priorizadas (1º a mais importante). Sempre explique O PORQUÊ de cada jogada — o objetivo é ENSINAR o jogador a pensar como profissional: troca de prêmios, sequenciamento, gestão de recursos e leitura do oponente.';
 async function callProfessor(userPrompt){
+  // Opção A: servidor local do Plano Max (Claude Code) — prioridade
+  const srv=getProfServer();
+  if(srv){
+    try{
+      const r=await fetch(srv,{
+        method:'POST',
+        headers:{'content-type':'application/json'},
+        body:JSON.stringify({system:PROF_SYSTEM, prompt:userPrompt})
+      });
+      const data=await r.json();
+      if(!r.ok||data.error) throw new Error(data.error||('servidor respondeu '+r.status));
+      if(data.text) return data.text;
+      throw new Error('resposta vazia do servidor');
+    }catch(e){
+      if(!getApiKey()) throw new Error('Servidor Max indisponível ('+e.message+'). O INICIAR_PROFESSOR_MAX.bat está rodando?');
+      // tem chave de API: cai pro plano B silenciosamente
+    }
+  }
+  // Opção B: API direta com chave
   const key=getApiKey();
-  if(!key) throw new Error('Configure a chave da API na aba ❓ Ajuda (seção 🎓 Professor)');
+  if(!key) throw new Error('Configure o Professor na aba ❓ Ajuda (servidor Max ou chave da API)');
   const r=await fetch('https://api.anthropic.com/v1/messages',{
     method:'POST',
     headers:{
@@ -2710,10 +2744,11 @@ function deckListText(d){
 async function testProfessor(){
   const st=$('ak-status');
   save(LS.akey, $('ak-key').value.trim());
-  st.innerHTML='<span class="spin"></span> testando...';
+  save(LS.aserver, $('ak-server').value.trim().replace(/\/$/,''));
+  st.innerHTML='<span class="spin"></span> testando (via '+(getProfServer()?'servidor Max':'chave da API')+')... pode levar alguns segundos';
   try{
     const t=await callProfessor('Diga apenas: "Pronto pra treinar, campeão!"');
-    st.innerHTML='✅ Conectado! O Professor disse: <i>'+esc(t.slice(0,80))+'</i>';
+    st.innerHTML='✅ Conectado! O Professor disse: <i>'+esc(t.slice(0,100))+'</i>';
   }catch(e){ st.textContent='⚠️ '+e.message; }
 }
 function slotBrief(s){
@@ -2793,6 +2828,7 @@ function restaurarTudo(ev){
 // ---------- init ----------
 fillTypeSelects();
 if($('ak-key')) $('ak-key').value=getApiKey();
+if($('ak-server')) $('ak-server').value=getProfServer()||'http://localhost:8092';
 manualSuperChange();
 renderCollection();
 renderDeckList();

@@ -33,9 +33,19 @@ App completo em **um único HTML** (`index.html`), sem build, sem dependências 
 3. Validar sintaxe: extrair o `<script>` e rodar `node --check`.
 4. `git commit` + `git push` → GitHub Pages publica sozinho (~1 min).
 
+## 🎓 Professor via Plano Max (FEITO ✅)
+
+`PROFESSOR_MAX_SERVER.js` + `INICIAR_PROFESSOR_MAX.bat` — servidor local (porta **8092**, Node puro, zero deps) que roda o Claude Code em modo headless (`claude -p` via stdin), autenticado pela assinatura **Max** (paulocrestan@gmail.com) — sem chave de API, sem custo extra. O app tenta o servidor primeiro (URL configurável na aba Ajuda, padrão `http://localhost:8092`) e cai pra chave de API se indisponível.
+
+**Setup no PC da empresa (24/7):**
+1. Instalar Node e Claude Code (`npm i -g @anthropic-ai/claude-code`), rodar `claude` uma vez e logar com paulocrestan@gmail.com (plano Max).
+2. `git clone` deste repositório → 2 cliques em `INICIAR_PROFESSOR_MAX.bat` (deixar aberto; pode agendar no Task Scheduler pra iniciar com o Windows).
+3. No app (naquele PC): Ajuda → 🎓 Professor → URL `http://localhost:8092` → Testar conexão.
+- Testado e funcionando em 26/07/2026 (resposta real de estratégia em ~segundos).
+- Obs.: do celular não alcança o localhost do PC — no celular, usar a Opção B (chave de API) ou futuramente um túnel.
+
 ## 📌 Pendências / ideias
 
-- [ ] **Professor com plano Max**: no PC da empresa (24/7!) dá pra montar mini-servidor local Node + Claude Agent SDK autenticado via `claude setup-token` (assinatura Max) em vez da chave de API — o app chamaria `http://localhost:PORT`.
 - [ ] Condições especiais na batalha (dormir/paralisar/queimar) automáticas.
 - [ ] Habilidades (Abilities) dos Pokémon no modo treino.
 - [ ] PWA offline completo (service worker + cache de imagens dos decks).
