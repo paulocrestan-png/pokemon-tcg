@@ -402,6 +402,7 @@
     </div>
     <div class="row" style="margin-bottom:8px">
       <input id="ak-server" placeholder="URL do servidor Max (ex.: http://localhost:8092)" style="flex:1; min-width:240px" onchange="saveApiKey()">
+      <input id="ak-token" type="password" placeholder="Token do servidor (se protegido)" style="min-width:200px" onchange="saveApiKey()">
     </div>
     <div class="help-box" style="margin-bottom:10px">
       <b>Opção B — 🔑 Chave da API</b> (paga por uso, ~R$ 0,20/consulta; funciona em qualquer aparelho): crie em <b>console.anthropic.com</b> → API Keys.
@@ -2677,11 +2678,14 @@ function matchupBriefing(myD, aiD){
 // =====================================================================
 LS.akey='ptcg_anthropic_key';
 LS.aserver='ptcg_professor_server';
+LS.atoken='ptcg_professor_token';
 function getApiKey(){ return load(LS.akey,''); }
 function getProfServer(){ return load(LS.aserver,''); }
+function getProfToken(){ return load(LS.atoken,''); }
 function saveApiKey(){
   save(LS.akey, $('ak-key').value.trim());
   save(LS.aserver, $('ak-server').value.trim().replace(/\/$/,''));
+  save(LS.atoken, $('ak-token').value.trim());
   toast('💾 Configuração do Professor salva');
 }
 const PROF_SYSTEM = 'Você é um treinador profissional de Pokémon TCG dando coaching ao vivo num app (formato casual com regras principais: fraqueza ×2, resistência −30, 1 energia/turno, 1 apoiador/turno, ex/V valem 2 prêmios e VMAX/VSTAR valem 3). Responda SEMPRE em português do Brasil, direto e didático, em no máximo 150 palavras, com no máximo 3 recomendações priorizadas (1º a mais importante). Sempre explique O PORQUÊ de cada jogada — o objetivo é ENSINAR o jogador a pensar como profissional: troca de prêmios, sequenciamento, gestão de recursos e leitura do oponente.';
@@ -2690,9 +2694,11 @@ async function callProfessor(userPrompt){
   const srv=getProfServer();
   if(srv){
     try{
+      const hdr={'content-type':'application/json'};
+      if(getProfToken()) hdr['x-professor-token']=getProfToken();
       const r=await fetch(srv,{
         method:'POST',
-        headers:{'content-type':'application/json'},
+        headers:hdr,
         body:JSON.stringify({system:PROF_SYSTEM, prompt:userPrompt})
       });
       const data=await r.json();

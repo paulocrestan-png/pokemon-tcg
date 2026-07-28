@@ -7,8 +7,15 @@
 // ============================================================
 const http = require('http');
 const { spawn } = require('child_process');
+const fs = require('fs');
+const path = require('path');
 
 const PORT = 8092;
+
+// Segurança: se existir PROFESSOR_TOKEN.txt ao lado deste arquivo, toda
+// consulta precisa mandar o token (necessário ao expor via túnel/internet).
+let TOKEN = '';
+try { TOKEN = fs.readFileSync(path.join(__dirname, 'PROFESSOR_TOKEN.txt'), 'utf8').trim(); } catch (e) {}
 
 function perguntarAoClaude(prompt, cb) {
   const p = spawn('claude', ['-p', '--output-format', 'text'], {
@@ -31,13 +38,19 @@ function perguntarAoClaude(prompt, cb) {
 
 http.createServer((req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Headers', 'content-type');
+  res.setHeader('Access-Control-Allow-Headers', 'content-type, x-professor-token');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
 
   if (req.method === 'GET') {
     res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-    res.end(JSON.stringify({ ok: true, professor: 'online (Plano Max via Claude Code)' }));
+    res.end(JSON.stringify({ ok: true, professor: 'online (Plano Max via Claude Code)', protegido: !!TOKEN }));
+    return;
+  }
+
+  if (TOKEN && (req.headers['x-professor-token'] || '') !== TOKEN) {
+    res.writeHead(401, { 'content-type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ error: 'Token do Professor inválido — configure na aba Ajuda do app' }));
     return;
   }
 
