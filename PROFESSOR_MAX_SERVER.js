@@ -16,6 +16,14 @@ const PORT = 8092;
 // consulta precisa mandar o token (necessário ao expor via túnel/internet).
 let TOKEN = '';
 try { TOKEN = fs.readFileSync(path.join(__dirname, 'PROFESSOR_TOKEN.txt'), 'utf8').trim(); } catch (e) {}
+const rate = {}; // por IP: {hits:[], fails:[], blockedUntil}
+
+// Sandbox: o claude roda numa pasta VAZIA, sem ferramentas e sem MCP —
+// mesmo com o token vazado, ninguém lê arquivos do PC através do Professor.
+const SANDBOX = path.join(__dirname, '_sandbox');
+try { fs.mkdirSync(SANDBOX, { recursive: true }); } catch (e) {}
+const CLAUDE_ARGS = ['-p', '--output-format', 'text', '--strict-mcp-config',
+  '--disallowedTools', 'Bash,Read,Glob,Grep,Write,Edit,MultiEdit,NotebookEdit,WebFetch,WebSearch,Task,TodoWrite'];
 
 function perguntarAoClaude(prompt, cb) {
   // Limpa marcadores de sessão do Claude Code — sem isso, se o servidor for
@@ -24,10 +32,11 @@ function perguntarAoClaude(prompt, cb) {
   delete env.CLAUDECODE;
   delete env.CLAUDE_CODE_ENTRYPOINT;
   delete env.CLAUDE_CODE_SSE_PORT;
-  const p = spawn('claude', ['-p', '--output-format', 'text'], {
+  const p = spawn('claude', CLAUDE_ARGS, {
     shell: process.platform === 'win32',
     windowsHide: true,
     env,
+    cwd: SANDBOX,
   });
   let out = '', err = '';
   const timer = setTimeout(() => { p.kill(); }, 180000); // 3 min máx
@@ -55,11 +64,29 @@ http.createServer((req, res) => {
     return;
   }
 
+  // Limite anti-abuso: 10 consultas/min por IP; 5 tokens errados → bloqueio 10 min
+  const ip = (req.headers['cf-connecting-ip'] || req.socket.remoteAddress || '?');
+  const now = Date.now();
+  const r = (rate[ip] = rate[ip] || { hits: [], fails: [], blockedUntil: 0 });
+  if (now < r.blockedUntil) {
+    res.writeHead(429, { 'content-type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ error: 'Muitas tentativas — aguarde alguns minutos' }));
+    return;
+  }
+  r.hits = r.hits.filter(t => now - t < 60000); r.fails = r.fails.filter(t => now - t < 60000);
+  if (r.hits.length >= 10) {
+    res.writeHead(429, { 'content-type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ error: 'Calma, campeão — máximo 10 consultas por minuto' }));
+    return;
+  }
   if (TOKEN && (req.headers['x-professor-token'] || '') !== TOKEN) {
+    r.fails.push(now);
+    if (r.fails.length >= 5) { r.blockedUntil = now + 600000; console.log('⛔ IP bloqueado 10 min por tokens errados: ' + ip); }
     res.writeHead(401, { 'content-type': 'application/json; charset=utf-8' });
     res.end(JSON.stringify({ error: 'Token do Professor inválido — configure na aba Ajuda do app' }));
     return;
   }
+  r.hits.push(now);
 
   let body = '';
   req.on('data', d => { body += d; if (body.length > 200000) req.destroy(); });
@@ -80,7 +107,7 @@ http.createServer((req, res) => {
       console.log('   → ' + (err ? 'ERRO: ' + err.message : 'respondido em ' + ((Date.now() - t0) / 1000).toFixed(1) + 's'));
     });
   });
-}).listen(PORT, () => {
+}).listen(PORT, '127.0.0.1', () => {
   console.log('===========================================');
   console.log('🎓 PROFESSOR (Plano Max) no ar!');
   console.log('   http://localhost:' + PORT);
