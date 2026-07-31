@@ -114,6 +114,7 @@
 <nav>
   <button data-tab="buscar" class="active">🔍 Buscar Carta</button>
   <button data-tab="colecao">📚 Minha Coleção</button>
+  <button data-tab="dex">📕 Pokédex</button>
   <button data-tab="decks">🃏 Meus Decks</button>
   <button data-tab="loja">🏪 Minha Loja</button>
   <button data-tab="batalha">⚔️ Batalha vs IA</button>
@@ -182,6 +183,27 @@
       <button class="btn sm ghost" onclick="downloadCollectionCsv()">⬇️ .csv</button>
     </div>
     <div class="grid" id="c-grid"></div>
+  </div>
+</section>
+
+<!-- ============ POKÉDEX ============ -->
+<section class="tab" id="tab-dex">
+  <div class="card-panel">
+    <h2>📕 Pokédex — Guia de Coleção (1025 Pokémon)</h2>
+    <p class="muted" style="margin-bottom:10px">Todos os Pokémon na <b>ordem correta da Pokédex Nacional</b> (#1 Bulbasaur → #1025 Pecharunt), com a arte oficial de referência. Clique nos que você JÁ TEM pelo menos uma carta — e cace o resto!</p>
+    <div class="row" style="margin-bottom:8px">
+      <div class="ai-stat" style="font-size:.95rem">✅ Tenho <b id="dex-have">0</b> de <b id="dex-total">1025</b> (<b id="dex-pct">0%</b>)</div>
+      <input id="dex-search" placeholder="🔍 nome ou número..." style="min-width:150px" oninput="renderDex()">
+      <button class="btn sm ghost on" id="dxm-all" onclick="dexSetMode('all')">Todos</button>
+      <button class="btn sm ghost" id="dxm-miss" onclick="dexSetMode('miss')">Faltando</button>
+      <button class="btn sm ghost" id="dxm-have" onclick="dexSetMode('have')">Tenho</button>
+      <button class="btn sm ghost" id="dex-lock" onclick="dexToggleLock()" title="Travar marcação">🔓</button>
+      <button class="btn sm" onclick="copyDexList('have')">📋 Tenho</button>
+      <button class="btn sm ghost" onclick="copyDexList('miss')">📋 Faltando</button>
+    </div>
+    <div class="hpbar" style="height:12px"><div id="dex-bar" style="width:0%"></div></div>
+    <div id="dex-gens" style="margin:10px 0"></div>
+    <div class="grid" id="dex-grid" style="grid-template-columns:repeat(auto-fill,minmax(105px,1fr))"></div>
   </div>
 </section>
 
@@ -555,6 +577,7 @@ document.querySelectorAll('nav button').forEach(b=>{
     if(b.dataset.tab==='colecao'){ renderCollection(); renderMyList(); }
     if(b.dataset.tab==='decks') renderDeckList();
     if(b.dataset.tab==='loja') renderLoja();
+    if(b.dataset.tab==='dex') loadDex();
     if(b.dataset.tab==='batalha') initBattleTab();
   };
 });
@@ -3016,6 +3039,98 @@ function renderChecklist(){
       '</div>';
   }).join('') || '<p class="muted">nenhuma carta neste filtro</p>';
   renderMyList();
+}
+
+// =====================================================================
+// 📕 POKÉDEX — guia de coleção 1025 (arte oficial PokeAPI)
+// =====================================================================
+LS.dex='ptcg_dex'; LS.dexnames='ptcg_dex_names'; LS.dexlock='ptcg_dex_lock';
+let dexHave=load(LS.dex,{}), dexNames=load(LS.dexnames,null);
+let dexModeV='all', dexGen=0, dexLocked=load(LS.dexlock,false), dexLoaded=false;
+const DEX_TOTAL=1025;
+const DEX_GENS=[[1,151],[152,251],[252,386],[387,493],[494,649],[650,721],[722,809],[810,905],[906,1025]];
+function dexImg(n){ return 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/'+n+'.png'; }
+function dexName(n){
+  const nm=(dexNames&&dexNames[n-1])||'';
+  return nm ? nm.split('-').map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join(' ') : 'Pokémon';
+}
+async function loadDex(){
+  if(!dexNames){
+    try{
+      const r=await fetchT('https://pokeapi.co/api/v2/pokemon-species?limit='+DEX_TOTAL,20000);
+      const d=await r.json();
+      dexNames=d.results.map(x=>x.name);
+      save(LS.dexnames,dexNames);
+    }catch(e){ toast('⚠️ Sem internet pros nomes — mostrando só os números por enquanto'); }
+  }
+  dexLoaded=true;
+  renderDex();
+}
+function dexSetMode(m){ dexModeV=m; ['all','miss','have'].forEach(x=>$('dxm-'+x).classList.toggle('on',x===m)); renderDex(); }
+function dexGenSel(g){ dexGen=(dexGen===g?0:g); renderDex(); }
+function dexToggleLock(){
+  dexLocked=!dexLocked; save(LS.dexlock,dexLocked);
+  $('dex-lock').textContent=dexLocked?'🔒':'🔓'; $('dex-lock').classList.toggle('on',dexLocked);
+  toast(dexLocked?'🔒 Pokédex travada — só visualização':'🔓 Pokédex destravada');
+}
+function toggleDex(n, el){
+  if(dexLocked){ toast('🔒 Travada! Clique no cadeado pra destravar.'); return; }
+  if(dexHave[n]) delete dexHave[n]; else dexHave[n]=true;
+  save(LS.dex,dexHave);
+  if(el){
+    el.classList.toggle('ck-yes',!!dexHave[n]);
+    el.classList.toggle('ck-no',!dexHave[n]);
+    const b=el.querySelector('.ck-badge');
+    if(dexHave[n]&&!b){ const d=document.createElement('div'); d.className='ck-badge'; d.textContent='✔'; el.appendChild(d); }
+    else if(!dexHave[n]&&b) b.remove();
+  }
+  updateDexCounters();
+}
+function updateDexCounters(){
+  const n=Object.keys(dexHave).length;
+  $('dex-have').textContent=n;
+  const pct=Math.round(n/DEX_TOTAL*100);
+  $('dex-pct').textContent=pct+'%';
+  const bar=$('dex-bar');
+  bar.style.width=Math.max(pct, n>0?1:0)+'%';
+  bar.className=pct>=100?'':(pct>=50?'mid':'low');
+  if(pct>=100) bar.style.background='var(--green)';
+  $('dex-gens').innerHTML=DEX_GENS.map((g,i)=>{
+    let h=0; for(let k=g[0];k<=g[1];k++) if(dexHave[k]) h++;
+    const t=g[1]-g[0]+1;
+    return '<span class="pill rar-chip'+(dexGen===i+1?' active':'')+'" onclick="dexGenSel('+(i+1)+')">Gen '+(i+1)+' <b>'+h+'/'+t+'</b>'+(h>=t?' 🏆':'')+'</span>';
+  }).join('');
+}
+function renderDex(){
+  if(!dexLoaded) return;
+  updateDexCounters();
+  $('dex-lock').textContent=dexLocked?'🔒':'🔓'; $('dex-lock').classList.toggle('on',dexLocked);
+  const q=($('dex-search').value||'').toLowerCase().trim();
+  let from=1,to=DEX_TOTAL;
+  if(dexGen){ from=DEX_GENS[dexGen-1][0]; to=DEX_GENS[dexGen-1][1]; }
+  const items=[];
+  for(let n=from;n<=to;n++){
+    const has=!!dexHave[n];
+    if(dexModeV==='miss'&&has) continue;
+    if(dexModeV==='have'&&!has) continue;
+    if(q && String(n)!==q && !dexName(n).toLowerCase().includes(q)) continue;
+    items.push('<div class="cardbox '+(has?'ck-yes':'ck-no')+'" onclick="toggleDex('+n+',this)">'+
+      '<img loading="lazy" src="'+dexImg(n)+'" alt="" style="aspect-ratio:1/1; object-fit:contain">'+
+      (has?'<div class="ck-badge">✔</div>':'')+
+      '<div class="nm">'+esc(dexName(n))+'</div><div class="st">Nº '+n+'</div></div>');
+  }
+  $('dex-grid').innerHTML=items.join('')||'<p class="muted">nenhum Pokémon neste filtro</p>';
+}
+function copyDexList(modo){
+  const list=[];
+  for(let n=1;n<=DEX_TOTAL;n++){
+    const has=!!dexHave[n];
+    if(modo==='have'?has:!has) list.push('Nº '+n+' · '+dexName(n));
+  }
+  if(!list.length){ toast(modo==='have'?'Nenhum marcado ainda':'Pokédex completa! 🏆'); return; }
+  const nH=Object.keys(dexHave).length;
+  copyText('📕 POKÉDEX — '+(modo==='have'?'JÁ TENHO':'FALTAM')+'\nProgresso: '+nH+' de '+DEX_TOTAL+' ('+Math.round(nH/DEX_TOTAL*100)+'%)\n\n'+list.join('\n'),
+    '📋 Lista da Pokédex copiada ('+list.length+' Pokémon)!');
 }
 
 // =====================================================================
